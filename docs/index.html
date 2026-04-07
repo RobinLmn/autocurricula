@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>autocurricula — Adaptive Interview Practice, Powered by Claude</title>
+    <meta name="description" content="AI-powered technical interview practice that adapts to your skill level. Problems generated on-the-fly with real-time code execution and intelligent feedback.">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #111111;
+            --bg-warm: #161616;
+            --surface: #1a1a1a;
+            --surface-2: #222222;
+            --surface-3: #2a2a2a;
+            --edge: rgba(255,255,255,.06);
+            --edge-light: rgba(255,255,255,.10);
+            --t1: rgba(255,255,255,.90);
+            --t2: rgba(255,255,255,.55);
+            --t3: rgba(255,255,255,.30);
+            --green: #2fce6b;
+            --blue: #528bff;
+            --yellow: #f0c526;
+            --red: #f04438;
+            --radius: 12px;
+            --radius-lg: 20px;
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--t1);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(17,17,17,.80);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--edge);
+            padding: 0 2rem;
+            height: 56px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        nav .logo {
+            font-size: 1.1rem; font-weight: 700; letter-spacing: -.02em;
+            color: var(--t1);
+            text-decoration: none;
+        }
+        nav .logo span { color: var(--green); }
+        nav .links { display: flex; gap: 1.5rem; align-items: center; }
+        nav .links a {
+            color: var(--t2); text-decoration: none; font-size: .875rem;
+            transition: color .2s;
+        }
+        nav .links a:hover { color: var(--t1); }
+        nav .links .cta {
+            background: var(--green); color: #000; font-weight: 600;
+            padding: .45rem 1rem; border-radius: 8px;
+            transition: opacity .2s;
+        }
+        nav .links .cta:hover { opacity: .85; color: #000; }
+
+        /* ── Hero ── */
+        .hero {
+            min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center;
+            padding: 8rem 2rem 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute; top: -40%; left: 50%; transform: translateX(-50%);
+            width: 800px; height: 800px;
+            background: radial-gradient(circle, rgba(47,206,107,.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .hero .badge {
+            display: inline-flex; align-items: center; gap: .5rem;
+            background: var(--surface);
+            border: 1px solid var(--edge-light);
+            border-radius: 100px;
+            padding: .4rem 1rem;
+            font-size: .8rem; color: var(--t2);
+            margin-bottom: 2rem;
+        }
+        .hero .badge .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .4; }
+        }
+        .hero h1 {
+            font-size: clamp(2.5rem, 6vw, 4.5rem);
+            font-weight: 800;
+            letter-spacing: -.04em;
+            line-height: 1.1;
+            max-width: 800px;
+            margin-bottom: 1.5rem;
+        }
+        .hero h1 .accent { color: var(--green); }
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--t2);
+            max-width: 560px;
+            margin-bottom: 2.5rem;
+        }
+        .hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+        .btn {
+            display: inline-flex; align-items: center; gap: .5rem;
+            padding: .75rem 1.5rem;
+            border-radius: 10px;
+            font-size: .95rem; font-weight: 600;
+            text-decoration: none;
+            transition: all .2s;
+            border: none; cursor: pointer;
+        }
+        .btn-primary {
+            background: var(--green); color: #000;
+        }
+        .btn-primary:hover { opacity: .85; }
+        .btn-secondary {
+            background: var(--surface-2);
+            border: 1px solid var(--edge-light);
+            color: var(--t1);
+        }
+        .btn-secondary:hover { border-color: var(--t3); }
+
+        .install-box {
+            margin-top: 3rem;
+            background: var(--surface);
+            border: 1px solid var(--edge-light);
+            border-radius: var(--radius);
+            padding: .75rem 1.5rem;
+            font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+            font-size: .95rem;
+            color: var(--t2);
+            display: inline-flex; align-items: center; gap: .75rem;
+            cursor: pointer;
+            transition: border-color .2s;
+            position: relative;
+        }
+        .install-box:hover { border-color: var(--t3); }
+        .install-box code { color: var(--green); }
+        .install-box .copy-hint {
+            font-size: .75rem; color: var(--t3);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        /* ── Sections ── */
+        section {
+            padding: 6rem 2rem;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        .section-label {
+            font-size: .75rem;
+            text-transform: uppercase;
+            letter-spacing: .1em;
+            color: var(--green);
+            font-weight: 600;
+            margin-bottom: .75rem;
+        }
+        section h2 {
+            font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+            font-weight: 700;
+            letter-spacing: -.03em;
+            margin-bottom: 1rem;
+        }
+        section > p {
+            color: var(--t2);
+            font-size: 1.05rem;
+            max-width: 600px;
+            margin-bottom: 3rem;
+        }
+
+        /* ── How It Works ── */
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+        }
+        .step {
+            background: var(--surface);
+            border: 1px solid var(--edge);
+            border-radius: var(--radius-lg);
+            padding: 2rem 1.5rem;
+            position: relative;
+        }
+        .step-num {
+            font-size: .8rem; font-weight: 700; color: var(--green);
+            margin-bottom: 1rem;
+            font-family: "SF Mono", monospace;
+        }
+        .step h3 {
+            font-size: 1.1rem; font-weight: 600;
+            margin-bottom: .5rem;
+        }
+        .step p { font-size: .9rem; color: var(--t2); }
+
+        /* ── Features Grid ── */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.25rem;
+        }
+        .feature {
+            background: var(--surface);
+            border: 1px solid var(--edge);
+            border-radius: var(--radius-lg);
+            padding: 1.75rem;
+            transition: border-color .2s;
+        }
+        .feature:hover { border-color: var(--edge-light); }
+        .feature-icon {
+            width: 40px; height: 40px;
+            background: var(--surface-2);
+            border: 1px solid var(--edge-light);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+        .feature h3 {
+            font-size: 1rem; font-weight: 600;
+            margin-bottom: .4rem;
+        }
+        .feature p { font-size: .875rem; color: var(--t2); }
+
+        /* ── Categories ── */
+        .categories {
+            display: flex; flex-wrap: wrap; gap: .75rem;
+            margin-top: 2rem;
+        }
+        .cat-tag {
+            padding: .5rem 1rem;
+            background: var(--surface);
+            border: 1px solid var(--edge);
+            border-radius: 100px;
+            font-size: .85rem;
+            color: var(--t2);
+            transition: all .2s;
+        }
+        .cat-tag:hover { border-color: var(--green); color: var(--t1); }
+
+        /* ── Code Demo ── */
+        .demo-window {
+            background: var(--surface);
+            border: 1px solid var(--edge);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            margin-top: 2rem;
+        }
+        .demo-titlebar {
+            display: flex; align-items: center; gap: .5rem;
+            padding: .75rem 1rem;
+            border-bottom: 1px solid var(--edge);
+        }
+        .demo-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+        }
+        .demo-dot.r { background: var(--red); }
+        .demo-dot.y { background: var(--yellow); }
+        .demo-dot.g { background: var(--green); }
+        .demo-titlebar span {
+            flex: 1;
+            text-align: center;
+            font-size: .8rem;
+            color: var(--t3);
+            margin-right: 2rem;
+        }
+        .demo-body {
+            padding: 1.5rem;
+            font-family: "SF Mono", "Fira Code", monospace;
+            font-size: .85rem;
+            line-height: 1.7;
+            color: var(--t2);
+            overflow-x: auto;
+        }
+        .demo-body .kw { color: #c678dd; }
+        .demo-body .fn { color: #61afef; }
+        .demo-body .str { color: #98c379; }
+        .demo-body .cm { color: rgba(255,255,255,.25); }
+        .demo-body .num { color: #d19a66; }
+        .demo-body .op { color: #56b6c2; }
+
+        /* ── CTA ── */
+        .cta-section {
+            text-align: center;
+            padding: 8rem 2rem;
+        }
+        .cta-section h2 {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 800;
+            letter-spacing: -.03em;
+            margin-bottom: 1rem;
+        }
+        .cta-section p {
+            color: var(--t2);
+            font-size: 1.1rem;
+            max-width: 480px;
+            margin: 0 auto 2.5rem;
+        }
+
+        /* ── Footer ── */
+        footer {
+            border-top: 1px solid var(--edge);
+            padding: 2.5rem 2rem;
+            text-align: center;
+            color: var(--t3);
+            font-size: .85rem;
+        }
+        footer a { color: var(--t2); text-decoration: none; }
+        footer a:hover { color: var(--t1); }
+
+        /* ── Responsive ── */
+        @media (max-width: 640px) {
+            nav { padding: 0 1rem; }
+            .hero { padding: 7rem 1.25rem 3rem; }
+            section { padding: 4rem 1.25rem; }
+            .features { grid-template-columns: repeat(2, 1fr); }
+            .steps { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="#" class="logo">auto<span>curricula</span></a>
+        <div class="links">
+            <a href="#how-it-works">How it works</a>
+            <a href="#features">Features</a>
+            <a href="https://github.com/RobinLmn/autocurricula" class="cta">GitHub</a>
+        </div>
+    </nav>
+
+    <div class="hero">
+        <div class="badge">
+            <span class="dot"></span>
+            Open source &middot; MIT License
+        </div>
+        <h1>Interview practice that <span class="accent">adapts to you</span></h1>
+        <p>Claude generates problems matched to your role and skill level, reviews your solutions, and calibrates difficulty in real time.</p>
+        <div class="hero-actions">
+            <a href="https://pypi.org/project/autocurricula/" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Install
+            </a>
+            <a href="https://github.com/RobinLmn/autocurricula" class="btn btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                View source
+            </a>
+        </div>
+        <div class="install-box" onclick="navigator.clipboard.writeText('pip install autocurricula').then(()=>{this.querySelector('.copy-hint').textContent='Copied!'})">
+            <code>pip install autocurricula</code>
+            <span class="copy-hint">click to copy</span>
+        </div>
+    </div>
+
+    <section id="how-it-works">
+        <div class="section-label">How it works</div>
+        <h2>A self-adjusting curriculum loop</h2>
+        <p>Every problem is generated specifically for you. No two sessions are the same.</p>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">01</div>
+                <h3>Generate</h3>
+                <p>Claude creates a problem matched to your role, category rotation, and current difficulty level, including theory, tests, and a reference solution.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">02</div>
+                <h3>Solve</h3>
+                <p>Write your solution in a full-featured editor with autocompletion, hover docs, and signature hints. Run tests instantly in a sandboxed environment.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">03</div>
+                <h3>Review</h3>
+                <p>Submit for hidden tests and Claude's review. Get a verdict with detailed reasoning on correctness, edge cases, and code quality.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">04</div>
+                <h3>Adapt</h3>
+                <p>The system tracks your solve rate and self-reported difficulty ratings to calibrate what comes next. Difficulty adjusts automatically.</p>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="section-label">Demo</div>
+        <h2>Built-in editor with IDE features</h2>
+        <p>Monaco editor with Python autocompletion, hover docs, and live test feedback.</p>
+        <img src="screenshot.png" alt="autocurricula — K-Nearest Neighbors Classifier problem with code editor and test results" style="width:100%;display:block;border-radius:var(--radius-lg);">
+    </section>
+
+    <section id="features">
+        <div class="section-label">Features</div>
+        <h2>Everything you need to practice</h2>
+        <p>A complete interview prep environment that learns from how you perform.</p>
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                </div>
+                <h3>Adaptive difficulty</h3>
+                <p>Problems get harder as you improve. Solve rate and self-reported difficulty drive the calibration, so you're always in the sweet spot.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                </div>
+                <h3>Code & derivation problems</h3>
+                <p>Write Python functions with tests, or solve written math proofs, probability puzzles, and system design questions with LaTeX rendering.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+                <h3>AI tutor chat</h3>
+                <p>Ask Claude for hints without getting the answer. It sees your code and problem context, guiding you toward the solution step by step.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                </div>
+                <h3>Built-in theory</h3>
+                <p>Every problem comes with background material: formulas, derivations, algorithmic intuitions, and worked examples with LaTeX support.</p>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="section-label">Getting started</div>
+        <h2>Up and running in 30 seconds</h2>
+        <div class="steps" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-top: 2rem;">
+            <div class="step">
+                <div class="step-num">01</div>
+                <h3>Install</h3>
+                <p>Requires Python 3.11+ and the <a href="https://claude.ai/download" style="color:var(--green);text-decoration:none;">Claude CLI</a>, installed and authenticated.</p>
+                <div style="margin-top:1rem;font-family:monospace;font-size:.85rem;color:var(--green);">pip install autocurricula</div>
+            </div>
+            <div class="step">
+                <div class="step-num">02</div>
+                <h3>Launch</h3>
+                <p>Run the command and your browser opens automatically.</p>
+                <div style="margin-top:1rem;font-family:monospace;font-size:.85rem;color:var(--green);">autocurricula</div>
+            </div>
+            <div class="step">
+                <div class="step-num">03</div>
+                <h3>Choose a role</h3>
+                <p>Create a workspace for your target role and start practicing. Problems adapt to you from the first session.</p>
+            </div>
+        </div>
+    </section>
+
+    <div class="cta-section">
+        <h2>Start practicing now</h2>
+        <p>Free, open source, and adapts to you. No account needed.</p>
+        <div class="hero-actions">
+            <a href="https://pypi.org/project/autocurricula/" class="btn btn-primary">
+                Install from PyPI
+            </a>
+            <a href="https://github.com/RobinLmn/autocurricula" class="btn btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                View on GitHub
+            </a>
+        </div>
+    </div>
+
+    <footer>
+        <p>
+            <a href="https://github.com/RobinLmn/autocurricula">autocurricula</a> &middot;
+            MIT License &middot;
+            Built by <a href="https://github.com/RobinLmn">Robin Leman</a>
+        </p>
+    </footer>
+</body>
+</html>
