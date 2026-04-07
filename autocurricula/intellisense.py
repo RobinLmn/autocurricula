@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import sys
-from functools import lru_cache
-from pathlib import Path
-
 import jedi
 
 from .runner import SANDBOX_DIR

@@ -134,6 +134,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         })
 
     async def _send_app_state(self) -> None:
+        assert self.session is not None
         problem = self.session.get_current()
         state_msg: dict = {
             "type": "state",
@@ -197,6 +198,8 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         self._pool_task = asyncio.create_task(self._pool_generate())
 
     async def _pool_generate(self) -> None:
+        if self.session is None:
+            return
         try:
             meta, problem_dir = await asyncio.to_thread(
                 self.session.start_problem, False
@@ -208,6 +211,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
             self._pooled_problem = None
 
     async def _generate_next(self) -> None:
+        assert self.session is not None
         replay_id = self.session.pick_replay_or_new()
         if replay_id:
             meta, problem_dir = await asyncio.to_thread(
@@ -231,7 +235,8 @@ class SessionHandler(HandlersMixin, CommandsMixin):
             await self.send({"type": "generating"})
             await self.send_log('<span class="dim">Loading next problem...</span>')
             try:
-                await self._pool_task
+                if self._pool_task is not None:
+                    await self._pool_task
             except Exception:
                 pass
             finally:
@@ -256,12 +261,12 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         await self.send({"type": "clear_log"})
         await self.send_log('<span class="dim">Generating and validating problem...</span>')
         try:
-            meta, problem_dir = await asyncio.to_thread(
+            next_meta, next_problem_dir = await asyncio.to_thread(
                 self.session.start_problem
             )
-            self.current_problem = meta
-            self.current_problem_dir = problem_dir
-            payload = self._problem_payload(meta, problem_dir)
+            self.current_problem = next_meta
+            self.current_problem_dir = next_problem_dir
+            payload = self._problem_payload(next_meta, next_problem_dir)
             await self.send({"type": "problem_loaded", "problem": payload})
             await self.send({"type": "clear_log"})
             self._start_pool()

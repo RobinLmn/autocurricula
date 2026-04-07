@@ -16,7 +16,7 @@ def _slugify(role: str) -> str:
 
 def list_workspaces() -> dict[str, str]:
     """Return {slug: role_name} for all existing workspaces."""
-    result = {}
+    result: dict[str, str] = {}
     if not WORKSPACES_DIR.exists():
         return result
     for d in sorted(WORKSPACES_DIR.iterdir()):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from typing import Any
 
 from .models import GeneratedContent, GeneratedDerivation, GeneratedProblem, SubmissionVerdict
 
@@ -104,11 +105,13 @@ def chat_with_claude(
     return _call_claude(prompt)
 
 
-def _extract_json(text: str) -> dict:
+def _extract_json(text: str) -> dict[str, Any]:
     match = re.search(r"```json\s*\n(.*?)\n\s*```", text, re.DOTALL)
     if match:
-        return json.loads(match.group(1))
-    return json.loads(text)
+        result: dict[str, Any] = json.loads(match.group(1))
+        return result
+    result = json.loads(text)
+    return result
 
 
 def generate_next_problem(
@@ -220,12 +223,14 @@ Context:
 - Difficulty: {difficulty}
 - Attempts: {attempts}
 
-Review the submission and decide what happens next. Respond ONLY with a JSON block (wrapped in ```json``` markers) with these exact keys:
+Review the submission and decide what happens next. Respond ONLY with a JSON block
+(wrapped in ```json``` markers) with these exact keys:
 
 - "decision": one of "solved", "retry", or "move_on"
   - "solved": the solution is correct and passes all tests. Congratulate the student.
   - "retry": tests failed or the solution has issues worth fixing. Encourage them to try again.
-  - "move_on": the student has been struggling too long (many attempts) and should move to a different problem. Mark as unsolved.
+  - "move_on": the student has been struggling too long (many attempts) and should move to a
+    different problem. Mark as unsolved.
 
 - "feedback": detailed feedback string. Include:
   - Whether the solution is correct
@@ -263,7 +268,8 @@ Their current attempt:
 Role: {role}
 Category: {category}
 
-Generate an EASIER prerequisite problem that teaches the core concept needed to solve the harder problem above. The easier problem should:
+Generate an EASIER prerequisite problem that teaches the core concept needed to solve the
+harder problem above. The easier problem should:
 - Focus on the specific concept the student seems to be missing
 - Be solvable in isolation
 - Build intuition that transfers to the harder problem
@@ -313,7 +319,9 @@ Context:
 - Difficulty: {difficulty}
 - Attempts: {attempts}
 
-Review the answer and decide what happens next. The student does NOT need to match the reference solution exactly -- they can use different valid approaches or framings. Judge correctness, completeness, and quality of reasoning.
+Review the answer and decide what happens next. The student does NOT need to match the
+reference solution exactly -- they can use different valid approaches or framings. Judge
+correctness, completeness, and quality of reasoning.
 
 For math/derivation problems: judge mathematical correctness and rigor.
 For conceptual/behavioral questions: judge depth of understanding, clarity, and completeness.

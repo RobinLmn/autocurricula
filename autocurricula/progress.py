@@ -38,7 +38,8 @@ def history_summary(state: ProgressState, role: str | None = None) -> str:
         by_category.setdefault(p.category, []).append(p)
 
     lines = [
-        f"Total problems: {len(problems)} (solved: {len(solved)}, failed: {len(failed)}, scaffolded: {len(scaffolded)})",
+        f"Total problems: {len(problems)}"
+        f" (solved: {len(solved)}, failed: {len(failed)}, scaffolded: {len(scaffolded)})",
     ]
 
     for cat, cat_problems in by_category.items():
@@ -58,7 +59,8 @@ def history_summary(state: ProgressState, role: str | None = None) -> str:
     if high_regret:
         lines.append("High-regret problems (solved but user found hard/brutal -- consider similar topics):")
         for p in high_regret:
-            lines.append(f"  - {p.title} ({p.category}, {p.difficulty.value}, rated {rating_labels[p.user_rating]})")
+            label = rating_labels.get(p.user_rating or 0, "?")
+            lines.append(f"  - {p.title} ({p.category}, {p.difficulty.value}, rated {label})")
 
     return "\n".join(lines)
 

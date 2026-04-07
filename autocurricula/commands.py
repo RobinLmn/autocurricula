@@ -1,19 +1,44 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol
 
-from .models import ProblemStatus
+from .models import ProblemMeta, ProblemStatus, SubmissionVerdict
 from .test_parsing import extract_failure_details, parse_pytest_output
 
 if TYPE_CHECKING:
-    from .session_handler import SessionHandler
+    from .session import Session
+
+
+class _WsProto(Protocol):
+    async def receive_json(self) -> Any: ...
+
+
+class _CommandsProto(Protocol):
+    session: Session | None
+    current_problem: ProblemMeta | None
+    current_problem_dir: Path | None
+    _cmd_lock: asyncio.Lock
+    ws: _WsProto
+
+    async def send(self, msg: dict) -> None: ...
+    async def send_log(self, html: str, style: str = ...) -> None: ...
+    async def set_busy(self, busy: bool) -> None: ...
+    def _problem_payload(self, meta: ProblemMeta, d: Path) -> dict: ...
+    async def _send_verdict(self, meta: ProblemMeta, verdict: SubmissionVerdict) -> None: ...
+    async def _generate_next(self) -> None: ...
+    async def _cmd_submit_derivation(self) -> None: ...
 
 
 class CommandsMixin:
     """Command handlers (_cmd_*), mixed into SessionHandler."""
 
-    async def _cmd_run(self: SessionHandler) -> None:
+    session: Session | None
+    current_problem: ProblemMeta | None
+    current_problem_dir: Path | None
+
+    async def _cmd_run(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem is None or self._cmd_lock.locked():
             return
         if self.current_problem.format == "markdown":
@@ -35,10 +60,12 @@ class CommandsMixin:
         finally:
             await self.set_busy(False)
 
-    async def _cmd_test(self: SessionHandler) -> None:
+    async def _cmd_test(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem is None or self._cmd_lock.locked():
             return
         if self.current_problem.format == "markdown":
+            return
+        if self.session is None:
             return
         await self.set_busy(True)
         try:
@@ -64,11 +91,13 @@ class CommandsMixin:
         finally:
             await self.set_busy(False)
 
-    async def _cmd_submit(self: SessionHandler) -> None:
+    async def _cmd_submit(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem is None or self._cmd_lock.locked():
             return
         if self.current_problem.format == "markdown":
             await self._cmd_submit_derivation()
+            return
+        if self.session is None:
             return
         await self.set_busy(True)
         await self.send_log('<span class="dim">Submitting for review...</span>')
@@ -107,7 +136,9 @@ class CommandsMixin:
         finally:
             await self.set_busy(False)
 
-    async def _cmd_submit_derivation(self: SessionHandler) -> None:
+    async def _cmd_submit_derivation(self: _CommandsProto) -> None:  # type: ignore[misc]
+        if self.session is None:
+            return
         await self.set_busy(True)
         await self.send_log('<span class="dim">Submitting derivation for review...</span>')
         try:
@@ -123,7 +154,9 @@ class CommandsMixin:
         finally:
             await self.set_busy(False)
 
-    async def _send_verdict(self: SessionHandler, meta, verdict) -> None:
+    async def _send_verdict(self: _CommandsProto, meta: ProblemMeta, verdict: SubmissionVerdict) -> None:  # type: ignore[misc]
+        if self.session is None:
+            return
         has_parent = False
         if verdict.decision == "solved":
             problem = self.session.get_current()
@@ -139,8 +172,10 @@ class CommandsMixin:
             "problem_id": meta.id,
         })
 
-    async def _cmd_scaffold(self: SessionHandler) -> None:
+    async def _cmd_scaffold(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem is None or self._cmd_lock.locked():
+            return
+        if self.session is None:
             return
         await self.set_busy(True)
         await self.send({"type": "generating"})
@@ -163,9 +198,11 @@ class CommandsMixin:
         finally:
             await self.set_busy(False)
 
-    async def _cmd_give_up(self: SessionHandler) -> None:
+    async def _cmd_give_up(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem is None:
             await self.send_log('<span class="c-error">no active problem</span>')
+            return
+        if self.session is None:
             return
         await self.send({
             "type": "confirm",
@@ -173,10 +210,12 @@ class CommandsMixin:
         })
         try:
             while True:
-                data = await asyncio.wait_for(self.ws.receive_json(), timeout=30)
+                data = await asyncio.wait_for(self.ws.receive_json(), timeout=30)  # type: ignore[union-attr]
                 if data.get("type") == "confirm_response":
                     if data.get("confirmed"):
                         meta = self.session.give_up()
+                        if meta is None:
+                            return
                         await self.send_log(f'<span class="dim">Skipped: {meta.title}</span>')
                         current = self.session.get_current()
                         if (current and current.id != meta.id
@@ -191,14 +230,16 @@ class CommandsMixin:
         except TimeoutError:
             return
 
-    async def _cmd_show(self: SessionHandler) -> None:
+    async def _cmd_show(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem and self.current_problem_dir:
             payload = self._problem_payload(self.current_problem, self.current_problem_dir)
             await self.send({"type": "problem_loaded", "problem": payload})
         else:
             await self.send_log('<span class="c-error">no active problem</span>')
 
-    async def _cmd_problems(self: SessionHandler) -> None:
+    async def _cmd_problems(self: _CommandsProto) -> None:  # type: ignore[misc]
+        if self.session is None:
+            return
         db = self.session.load_problem_db()
         problems = []
         for p in sorted(db.values(), key=lambda x: x.created_at, reverse=True):
@@ -212,7 +253,9 @@ class CommandsMixin:
             })
         await self.send({"type": "problems_list", "problems": problems})
 
-    async def _cmd_progress(self: SessionHandler) -> None:
+    async def _cmd_progress(self: _CommandsProto) -> None:  # type: ignore[misc]
+        if self.session is None:
+            return
         from .progress import load_progress
         state = load_progress(self.session.progress_file)
         problems = list(state.problems.values())
@@ -238,9 +281,11 @@ class CommandsMixin:
             "categories": by_cat,
         })
 
-    async def _cmd_replay(self: SessionHandler, args: list[str]) -> None:
+    async def _cmd_replay(self: _CommandsProto, args: list[str]) -> None:  # type: ignore[misc]
         if not args:
             await self.send_log('<span class="dim">usage: /replay &lt;problem_id&gt;</span>')
+            return
+        if self.session is None:
             return
         db = self.session.load_problem_db()
         pid_query = args[0]
@@ -257,7 +302,9 @@ class CommandsMixin:
         else:
             await self.send_log('<span class="c-error">could not load problem</span>')
 
-    async def _cmd_resume(self: SessionHandler) -> None:
+    async def _cmd_resume(self: _CommandsProto) -> None:  # type: ignore[misc]
+        if self.session is None:
+            return
         problem = self.session.get_current()
         if problem is None:
             from .progress import load_progress, save_progress

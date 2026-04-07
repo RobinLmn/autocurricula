@@ -4,6 +4,7 @@ import json
 import random
 from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 from .engine import (
@@ -20,6 +21,7 @@ from .models import (
     GeneratedProblem,
     ProblemMeta,
     ProblemStatus,
+    ProgressState,
 )
 from .progress import (
     get_current_problem,
@@ -47,11 +49,11 @@ class Session:
     def _chat_file(self, problem_id: str) -> Path:
         return self._problem_dir(problem_id) / "chat.json"
 
-    def load_chat(self, problem_id: str) -> list[dict]:
+    def load_chat(self, problem_id: str) -> list[dict[Any, Any]]:
         f = self._chat_file(problem_id)
         if f.exists():
             try:
-                return json.loads(f.read_text())
+                return cast(list[dict[Any, Any]], json.loads(f.read_text()))
             except (json.JSONDecodeError, ValueError):
                 return []
         return []
@@ -93,7 +95,13 @@ class Session:
 
         return d
 
-    def _validate_problem(self, problem_id: str, generated: GeneratedProblem, meta: ProblemMeta, max_attempts: int = 3) -> GeneratedProblem:
+    def _validate_problem(
+        self,
+        problem_id: str,
+        generated: GeneratedProblem,
+        meta: ProblemMeta,
+        max_attempts: int = 3,
+    ) -> GeneratedProblem:
         """Validate a generated problem by running the reference solution against the tests.
 
         If tests fail, ask Claude to fix the problem and retry up to max_attempts times.
@@ -122,10 +130,10 @@ class Session:
 
         return generated
 
-    def _load_state(self):
+    def _load_state(self) -> ProgressState:
         return load_progress(self.progress_file)
 
-    def _save_state(self, state):
+    def _save_state(self, state: ProgressState) -> None:
         save_progress(state, self.progress_file)
 
     def _load_problem_from_dir(self, problem_dir: Path) -> ProblemMeta | None:
@@ -162,7 +170,10 @@ class Session:
 
         generated = generate_next_problem(self.role, description, summary)
 
-        difficulty = Difficulty(generated.difficulty) if generated.difficulty in ("easy", "medium", "hard") else Difficulty.MEDIUM
+        if generated.difficulty in ("easy", "medium", "hard"):
+            difficulty = Difficulty(generated.difficulty)
+        else:
+            difficulty = Difficulty.MEDIUM
         fmt = generated.format if generated.format in ("python", "markdown") else "python"
 
         meta = ProblemMeta(
@@ -349,20 +360,20 @@ class Session:
             self._write_derivation_files(problem_id, generated, scaffold_meta)
         else:
             user_code = (d / "solution.py").read_text()
-            generated = generate_scaffold(
+            prob = generate_scaffold(
                 question, user_code, original.role, original.category, history_summary(state, original.role)
             )
             scaffold_meta = ProblemMeta(
                 id=problem_id,
-                title=generated.title,
+                title=prob.title,
                 role=original.role,
                 category=original.category,
                 difficulty=Difficulty.EASY,
                 format="python",
                 parent_problem=original.id,
             )
-            generated = self._validate_problem(problem_id, generated, scaffold_meta)
-            self._write_problem_files(problem_id, generated, scaffold_meta)
+            prob = self._validate_problem(problem_id, prob, scaffold_meta)
+            self._write_problem_files(problem_id, prob, scaffold_meta)
 
         original.status = ProblemStatus.SCAFFOLDED
         original.prerequisite_of = problem_id
@@ -425,8 +436,8 @@ class Session:
         if random.random() > 0.3:
             return None
         # Weight by rating: higher rating = more likely to replay
-        weights = [p.user_rating for p in high_regret]
-        chosen = random.choices(high_regret, weights=weights, k=1)[0]
+        weights: list[float] = [float(p.user_rating or 1) for p in high_regret]
+        chosen = cast(ProblemMeta, random.choices(high_regret, weights=weights, k=1)[0])
         return chosen.id
 
     def resume_parent(self) -> tuple[ProblemMeta | None, Path | None]:
