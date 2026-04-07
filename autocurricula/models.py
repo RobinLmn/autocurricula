@@ -47,6 +47,7 @@ class ProgressState(BaseModel):
 
 class GeneratedContent(BaseModel):
     """Unified output from the problem generator. Claude picks everything."""
+
     title: str
     category: str
     difficulty: str

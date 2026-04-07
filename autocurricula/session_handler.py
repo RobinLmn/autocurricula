@@ -97,17 +97,19 @@ class SessionHandler(HandlersMixin, CommandsMixin):
                 }
                 for p in history
             ]
-            result.append({
-                "slug": slug,
-                "role": role,
-                "total": total,
-                "solved": solved,
-                "failed": failed,
-                "in_progress": in_prog,
-                "rate": round((solved / total * 100), 1) if total else 0,
-                "categories": by_cat,
-                "history": history_items,
-            })
+            result.append(
+                {
+                    "slug": slug,
+                    "role": role,
+                    "total": total,
+                    "solved": solved,
+                    "failed": failed,
+                    "in_progress": in_prog,
+                    "rate": round((solved / total * 100), 1) if total else 0,
+                    "categories": by_cat,
+                    "history": history_items,
+                }
+            )
         return result
 
     @staticmethod
@@ -115,7 +117,9 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         try:
             result = subprocess.run(
                 ["claude", "--version"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode != 0:
                 return "Claude CLI found but returned an error. Reinstall it from https://claude.ai/download"
@@ -127,11 +131,13 @@ class SessionHandler(HandlersMixin, CommandsMixin):
 
     async def _send_landing(self) -> None:
         claude_error = self._check_claude_cli()
-        await self.send({
-            "type": "landing",
-            "workspaces": self._get_workspaces_data(),
-            **({"claude_error": claude_error} if claude_error else {}),
-        })
+        await self.send(
+            {
+                "type": "landing",
+                "workspaces": self._get_workspaces_data(),
+                **({"claude_error": claude_error} if claude_error else {}),
+            }
+        )
 
     async def _send_app_state(self) -> None:
         assert self.session is not None
@@ -201,9 +207,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         if self.session is None:
             return
         try:
-            meta, problem_dir = await asyncio.to_thread(
-                self.session.start_problem, False
-            )
+            meta, problem_dir = await asyncio.to_thread(self.session.start_problem, False)
             self._pooled_problem = (meta, problem_dir)
             print(f"[pool] Pre-generated: {meta.title}")
         except Exception as e:
@@ -214,9 +218,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         assert self.session is not None
         replay_id = self.session.pick_replay_or_new()
         if replay_id:
-            meta, problem_dir = await asyncio.to_thread(
-                self.session.replay_problem, replay_id
-            )
+            meta, problem_dir = await asyncio.to_thread(self.session.replay_problem, replay_id)
             if meta and problem_dir:
                 self.current_problem = meta
                 self.current_problem_dir = problem_dir
@@ -261,9 +263,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         await self.send({"type": "clear_log"})
         await self.send_log('<span class="dim">Generating and validating problem...</span>')
         try:
-            next_meta, next_problem_dir = await asyncio.to_thread(
-                self.session.start_problem
-            )
+            next_meta, next_problem_dir = await asyncio.to_thread(self.session.start_problem)
             self.current_problem = next_meta
             self.current_problem_dir = next_problem_dir
             payload = self._problem_payload(next_meta, next_problem_dir)

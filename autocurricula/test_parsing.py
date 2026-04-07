@@ -41,9 +41,7 @@ def extract_failure_details(output: str) -> dict[str, str]:
             current_test = None
             current_lines = []
         elif stripped.startswith("=") and (
-            "short test summary" in stripped.lower()
-            or "passed" in stripped.lower()
-            or "failed" in stripped.lower()
+            "short test summary" in stripped.lower() or "passed" in stripped.lower() or "failed" in stripped.lower()
         ):
             if current_test and current_lines:
                 raw_details[current_test] = current_lines

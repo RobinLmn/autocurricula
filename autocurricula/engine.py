@@ -99,9 +99,7 @@ def chat_with_claude(
 ) -> str:
     """Chat with Claude about the current problem. Uses session-style prompting:
     rules are set in the first message, history carries them forward."""
-    prompt = _build_chat_prompt(
-        message, question, user_code, is_markdown, chat_history or []
-    )
+    prompt = _build_chat_prompt(message, question, user_code, is_markdown, chat_history or [])
     return _call_claude(prompt)
 
 
@@ -288,7 +286,6 @@ Make the difficulty EASY relative to the original problem."""
     raw = _call_claude(prompt)
     data = _extract_json(raw)
     return GeneratedProblem(**data)
-
 
 
 def review_derivation(

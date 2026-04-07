@@ -47,14 +47,15 @@ class CommandsMixin:
         await self.send({"type": "clear_log"})
         try:
             from .runner import run_solution
-            result = await asyncio.to_thread(
-                run_solution, str(self.current_problem_dir)
+
+            result = await asyncio.to_thread(run_solution, str(self.current_problem_dir))
+            await self.send(
+                {
+                    "type": "log",
+                    "text": result.output,
+                    "error": not result.passed,
+                }
             )
-            await self.send({
-                "type": "log",
-                "text": result.output,
-                "error": not result.passed,
-            })
         except Exception as e:
             await self.send_log(f'<span class="c-error">error: {e}</span>')
         finally:
@@ -78,14 +79,16 @@ class CommandsMixin:
             for t in tests:
                 if t["status"] == "failed" and t["name"] in details:
                     t["detail"] = details[t["name"]]
-            await self.send({
-                "type": "test_results",
-                "label": "Open Tests",
-                "passed": result.passed,
-                "num_passed": result.num_passed,
-                "num_failed": result.num_failed,
-                "tests": tests,
-            })
+            await self.send(
+                {
+                    "type": "test_results",
+                    "label": "Open Tests",
+                    "passed": result.passed,
+                    "num_passed": result.num_passed,
+                    "num_failed": result.num_failed,
+                    "tests": tests,
+                }
+            )
         except Exception as e:
             await self.send_log(f'<span class="c-error">error: {e}</span>')
         finally:
@@ -102,9 +105,7 @@ class CommandsMixin:
         await self.set_busy(True)
         await self.send_log('<span class="dim">Submitting for review...</span>')
         try:
-            meta, open_result, hidden_result, verdict = await asyncio.to_thread(
-                self.session.submit_solution
-            )
+            meta, open_result, hidden_result, verdict = await asyncio.to_thread(self.session.submit_solution)
             if verdict is None:
                 await self.send_log('<span class="c-error">no active problem</span>')
                 return
@@ -118,18 +119,20 @@ class CommandsMixin:
             for t in hidden_tests:
                 if t["status"] == "failed" and t["name"] in hidden_details:
                     t["detail"] = hidden_details[t["name"]]
-            await self.send({
-                "type": "test_results",
-                "label": "Submission",
-                "passed": open_result.passed and hidden_result.passed,
-                "num_passed": open_result.num_passed + hidden_result.num_passed,
-                "num_failed": open_result.num_failed + hidden_result.num_failed,
-                "tests": open_tests + hidden_tests,
-                "sections": [
-                    {"label": "Open Tests", "passed": open_result.passed, "tests": open_tests},
-                    {"label": "Hidden Tests", "passed": hidden_result.passed, "tests": hidden_tests},
-                ],
-            })
+            await self.send(
+                {
+                    "type": "test_results",
+                    "label": "Submission",
+                    "passed": open_result.passed and hidden_result.passed,
+                    "num_passed": open_result.num_passed + hidden_result.num_passed,
+                    "num_failed": open_result.num_failed + hidden_result.num_failed,
+                    "tests": open_tests + hidden_tests,
+                    "sections": [
+                        {"label": "Open Tests", "passed": open_result.passed, "tests": open_tests},
+                        {"label": "Hidden Tests", "passed": hidden_result.passed, "tests": hidden_tests},
+                    ],
+                }
+            )
             await self._send_verdict(meta, verdict)
         except Exception as e:
             await self.send_log(f'<span class="c-error">error: {e}</span>')
@@ -142,9 +145,7 @@ class CommandsMixin:
         await self.set_busy(True)
         await self.send_log('<span class="dim">Submitting derivation for review...</span>')
         try:
-            meta, verdict = await asyncio.to_thread(
-                self.session.submit_derivation
-            )
+            meta, verdict = await asyncio.to_thread(self.session.submit_derivation)
             if verdict is None:
                 await self.send_log('<span class="c-error">no active problem</span>')
                 return
@@ -164,13 +165,15 @@ class CommandsMixin:
                 has_parent = True
         label = {"solved": "Solved!", "retry": "Not quite", "move_on": "Moving on"}.get(verdict.decision, "Review")
         self.session.append_chat(meta.id, "assistant", f"**{label}**\n\n{verdict.feedback}")
-        await self.send({
-            "type": "verdict",
-            "decision": verdict.decision,
-            "feedback": verdict.feedback,
-            "has_parent": has_parent,
-            "problem_id": meta.id,
-        })
+        await self.send(
+            {
+                "type": "verdict",
+                "decision": verdict.decision,
+                "feedback": verdict.feedback,
+                "has_parent": has_parent,
+                "problem_id": meta.id,
+            }
+        )
 
     async def _cmd_scaffold(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem is None or self._cmd_lock.locked():
@@ -182,9 +185,7 @@ class CommandsMixin:
         await self.send({"type": "clear_log"})
         await self.send_log('<span class="dim">Generating easier prerequisite...</span>')
         try:
-            original, scaffold_meta, scaffold_dir = await asyncio.to_thread(
-                self.session.scaffold_problem
-            )
+            original, scaffold_meta, scaffold_dir = await asyncio.to_thread(self.session.scaffold_problem)
             if scaffold_meta and scaffold_dir:
                 self.current_problem = scaffold_meta
                 self.current_problem_dir = scaffold_dir
@@ -204,10 +205,12 @@ class CommandsMixin:
             return
         if self.session is None:
             return
-        await self.send({
-            "type": "confirm",
-            "message": f"Skip '{self.current_problem.title}'?",
-        })
+        await self.send(
+            {
+                "type": "confirm",
+                "message": f"Skip '{self.current_problem.title}'?",
+            }
+        )
         try:
             while True:
                 data = await asyncio.wait_for(self.ws.receive_json(), timeout=30)  # type: ignore[union-attr]
@@ -218,8 +221,7 @@ class CommandsMixin:
                             return
                         await self.send_log(f'<span class="dim">Skipped: {meta.title}</span>')
                         current = self.session.get_current()
-                        if (current and current.id != meta.id
-                                and current.status == ProblemStatus.IN_PROGRESS):
+                        if current and current.id != meta.id and current.status == ProblemStatus.IN_PROGRESS:
                             self.current_problem = current
                             self.current_problem_dir = self.session._problem_dir(current.id)
                             payload = self._problem_payload(current, self.current_problem_dir)
@@ -243,20 +245,23 @@ class CommandsMixin:
         db = self.session.load_problem_db()
         problems = []
         for p in sorted(db.values(), key=lambda x: x.created_at, reverse=True):
-            problems.append({
-                "id": p.id,
-                "title": p.title,
-                "category": p.category,
-                "difficulty": p.difficulty.value,
-                "status": p.status.value,
-                "attempts": p.attempts,
-            })
+            problems.append(
+                {
+                    "id": p.id,
+                    "title": p.title,
+                    "category": p.category,
+                    "difficulty": p.difficulty.value,
+                    "status": p.status.value,
+                    "attempts": p.attempts,
+                }
+            )
         await self.send({"type": "problems_list", "problems": problems})
 
     async def _cmd_progress(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.session is None:
             return
         from .progress import load_progress
+
         state = load_progress(self.session.progress_file)
         problems = list(state.problems.values())
         solved = sum(1 for p in problems if p.status == ProblemStatus.SOLVED)
@@ -271,15 +276,17 @@ class CommandsMixin:
             by_cat[cat]["total"] += 1
             if p.status == ProblemStatus.SOLVED:
                 by_cat[cat]["solved"] += 1
-        await self.send({
-            "type": "progress_data",
-            "role": self.session.role,
-            "solved": solved,
-            "failed": failed,
-            "total": total,
-            "rate": round(rate, 1),
-            "categories": by_cat,
-        })
+        await self.send(
+            {
+                "type": "progress_data",
+                "role": self.session.role,
+                "solved": solved,
+                "failed": failed,
+                "total": total,
+                "rate": round(rate, 1),
+                "categories": by_cat,
+            }
+        )
 
     async def _cmd_replay(self: _CommandsProto, args: list[str]) -> None:  # type: ignore[misc]
         if not args:
@@ -308,11 +315,9 @@ class CommandsMixin:
         problem = self.session.get_current()
         if problem is None:
             from .progress import load_progress, save_progress
+
             state = load_progress(self.session.progress_file)
-            in_progress = [
-                p for p in state.problems.values()
-                if p.status == ProblemStatus.IN_PROGRESS
-            ]
+            in_progress = [p for p in state.problems.values() if p.status == ProblemStatus.IN_PROGRESS]
             if not in_progress:
                 await self.send_log('<span class="c-error">no in-progress problems</span>')
                 return

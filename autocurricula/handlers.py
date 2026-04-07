@@ -50,6 +50,7 @@ class HandlersMixin:
         if not slug:
             return
         from .server import _safe_workspace_path
+
         ws_dir = _safe_workspace_path(slug)
         if ws_dir is None:
             await self.send({"type": "error", "message": "Invalid workspace"})
@@ -60,6 +61,7 @@ class HandlersMixin:
             return
         role = role_file.read_text().strip()
         from .workspace import CONFIG_FILE
+
         CONFIG_FILE.write_text(slug)
         session = Session(role, ws_dir)
         self.session = session
@@ -74,6 +76,7 @@ class HandlersMixin:
         if not slug or not problem_id:
             return
         from .server import _safe_workspace_path
+
         ws_dir = _safe_workspace_path(slug)
         if ws_dir is None:
             return
@@ -82,6 +85,7 @@ class HandlersMixin:
             return
         role = role_file.read_text().strip()
         from .workspace import CONFIG_FILE
+
         CONFIG_FILE.write_text(slug)
         self.session = Session(role, ws_dir)
         d = self.session._problem_dir(problem_id)
@@ -96,12 +100,14 @@ class HandlersMixin:
             self.current_problem = meta
             self.current_problem_dir = d
             payload = self._problem_payload(meta, d)
-            await self.send({
-                "type": "state",
-                "needs_onboarding": False,
-                "role": self.session.role,
-                "problem": payload,
-            })
+            await self.send(
+                {
+                    "type": "state",
+                    "needs_onboarding": False,
+                    "role": self.session.role,
+                    "problem": payload,
+                }
+            )
         else:
             await self._send_app_state()
 
@@ -111,6 +117,7 @@ class HandlersMixin:
         if not slug or not problem_id:
             return
         from .server import _safe_workspace_path
+
         ws_dir = _safe_workspace_path(slug)
         if ws_dir is None:
             return

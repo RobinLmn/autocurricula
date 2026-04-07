@@ -34,7 +34,6 @@ def get_last_workspace() -> str | None:
     return None
 
 
-
 def init_workspace(role: str | None = None) -> tuple[str, Path] | None:
     """Initialize a workspace for the given role. Returns (role, workspace_dir).
 

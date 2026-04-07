@@ -63,5 +63,3 @@ def history_summary(state: ProgressState, role: str | None = None) -> str:
             lines.append(f"  - {p.title} ({p.category}, {p.difficulty.value}, rated {label})")
 
     return "\n".join(lines)
-
-

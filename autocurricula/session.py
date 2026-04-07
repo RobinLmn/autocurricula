@@ -425,10 +425,9 @@ class Session:
         """
         state = self._load_state()
         high_regret = [
-            p for p in state.problems.values()
-            if p.status == ProblemStatus.SOLVED
-            and p.user_rating is not None
-            and p.user_rating >= 3
+            p
+            for p in state.problems.values()
+            if p.status == ProblemStatus.SOLVED and p.user_rating is not None and p.user_rating >= 3
         ]
         if not high_regret:
             return None

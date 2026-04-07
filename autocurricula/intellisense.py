@@ -39,7 +39,7 @@ def _public_name(full_name: str | None) -> str | None:
     # numpy internal -> numpy.X
     for prefix in _NUMPY_INTERNAL:
         if full_name.startswith(prefix):
-            return "numpy." + full_name[len(prefix):]
+            return "numpy." + full_name[len(prefix) :]
     # torch.nn.modules.X.Y -> torch.nn.Y
     if full_name.startswith("torch.nn.modules."):
         parts = full_name.split(".")
@@ -48,16 +48,74 @@ def _public_name(full_name: str | None) -> str | None:
 
 
 _PYTHON_BUILTINS = {
-    "abs", "all", "any", "ascii", "bin", "bool", "breakpoint", "bytearray",
-    "bytes", "callable", "chr", "classmethod", "compile", "complex",
-    "delattr", "dict", "dir", "divmod", "enumerate", "eval", "exec",
-    "filter", "float", "format", "frozenset", "getattr", "globals",
-    "hasattr", "hash", "help", "hex", "id", "input", "int", "isinstance",
-    "issubclass", "iter", "len", "list", "locals", "map", "max",
-    "memoryview", "min", "next", "object", "oct", "open", "ord", "pow",
-    "print", "property", "range", "repr", "reversed", "round", "set",
-    "setattr", "slice", "sorted", "staticmethod", "str", "sum", "super",
-    "tuple", "type", "vars", "zip",
+    "abs",
+    "all",
+    "any",
+    "ascii",
+    "bin",
+    "bool",
+    "breakpoint",
+    "bytearray",
+    "bytes",
+    "callable",
+    "chr",
+    "classmethod",
+    "compile",
+    "complex",
+    "delattr",
+    "dict",
+    "dir",
+    "divmod",
+    "enumerate",
+    "eval",
+    "exec",
+    "filter",
+    "float",
+    "format",
+    "frozenset",
+    "getattr",
+    "globals",
+    "hasattr",
+    "hash",
+    "help",
+    "hex",
+    "id",
+    "input",
+    "int",
+    "isinstance",
+    "issubclass",
+    "iter",
+    "len",
+    "list",
+    "locals",
+    "map",
+    "max",
+    "memoryview",
+    "min",
+    "next",
+    "object",
+    "oct",
+    "open",
+    "ord",
+    "pow",
+    "print",
+    "property",
+    "range",
+    "repr",
+    "reversed",
+    "round",
+    "set",
+    "setattr",
+    "slice",
+    "sorted",
+    "staticmethod",
+    "str",
+    "sum",
+    "super",
+    "tuple",
+    "type",
+    "vars",
+    "zip",
 }
 
 
@@ -77,9 +135,23 @@ def get_doc_url(full_name: str | None) -> str | None:
     # Python stdlib modules (e.g. collections.Counter, itertools.chain)
     parts = name.split(".")
     if len(parts) >= 2 and parts[0] in (
-        "collections", "itertools", "functools", "math", "statistics",
-        "heapq", "bisect", "operator", "re", "json", "os", "sys",
-        "typing", "dataclasses", "datetime", "random", "string",
+        "collections",
+        "itertools",
+        "functools",
+        "math",
+        "statistics",
+        "heapq",
+        "bisect",
+        "operator",
+        "re",
+        "json",
+        "os",
+        "sys",
+        "typing",
+        "dataclasses",
+        "datetime",
+        "random",
+        "string",
     ):
         return f"https://docs.python.org/3/library/{parts[0]}.html#{name}"
     return None
@@ -154,13 +226,15 @@ def get_completions(source: str, line: int, column: int) -> list[dict]:
         except Exception:
             pass
 
-        results.append({
-            "name": c.name,
-            "kind": KIND_MAP.get(c.type, "Variable"),
-            "detail": detail,
-            "doc": doc[:500] if doc else "",
-            "doc_url": doc_url,
-        })
+        results.append(
+            {
+                "name": c.name,
+                "kind": KIND_MAP.get(c.type, "Variable"),
+                "detail": detail,
+                "doc": doc[:500] if doc else "",
+                "doc_url": doc_url,
+            }
+        )
     return results
 
 
@@ -196,16 +270,20 @@ def get_signatures(source: str, line: int, column: int) -> list[dict]:
     for s in sigs:
         params = []
         for p in s.params:
-            params.append({
-                "name": p.name,
-                "description": p.description,
-            })
+            params.append(
+                {
+                    "name": p.name,
+                    "description": p.description,
+                }
+            )
         doc_url = get_doc_url(s.full_name)
-        results.append({
-            "name": s.name,
-            "params": params,
-            "index": s.index if s.index is not None else 0,
-            "doc": (s.docstring(raw=True) or "")[:500],
-            "doc_url": doc_url,
-        })
+        results.append(
+            {
+                "name": s.name,
+                "params": params,
+                "index": s.index if s.index is not None else 0,
+                "doc": (s.docstring(raw=True) or "")[:500],
+                "doc_url": doc_url,
+            }
+        )
     return results
