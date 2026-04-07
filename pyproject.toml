@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autocurricula"
+version = "0.1.0"
+description = "Adaptive coding interview practice powered by Claude"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Robin Leman", email = "robin.leman@mail.mcgill.ca" },
+]
+keywords = ["interview", "practice", "coding", "claude", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Education",
+]
+dependencies = [
+    "pydantic>=2.0.0",
+    "pytest>=7.0.0",
+"fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "websockets>=12.0",
+    "jedi>=0.19.0",
+]
+
+[project.scripts]
+autocurricula = "autocurricula.server:main"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.setuptools.packages.find]
+include = ["autocurricula*"]
+
+[tool.setuptools.package-data]
+autocurricula = ["static/**/*"]

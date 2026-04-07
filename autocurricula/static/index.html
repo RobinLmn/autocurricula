@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>autocurricula</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     LANDING PAGE
+     ═══════════════════════════════════════════════════════ -->
+<div id="landing-view">
+    <div id="landing-inner">
+        <div id="landing-header">
+            <h1 id="landing-logo">autocurricula</h1>
+            <p id="landing-tagline">Adaptive interview practice, powered by Claude</p>
+        </div>
+
+        <div id="workspaces-grid"></div>
+
+        <div id="create-section">
+            <button id="btn-new-workspace" class="create-btn">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                New workspace
+            </button>
+        </div>
+
+        <div id="create-form" class="hidden">
+            <div id="create-card">
+                <p class="create-label">What role are you practicing for?</p>
+                <p class="create-hint">e.g. Machine Learning Engineer, Quant Researcher, Backend SWE, or a mix</p>
+                <input type="text" id="create-input"
+                       placeholder="Describe your role or interests"
+                       autocomplete="off" spellcheck="false">
+                <div class="create-actions">
+                    <button class="ghost-btn" id="create-cancel">Cancel</button>
+                    <button class="primary-btn" id="create-confirm">Create</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     APP VIEW (Conductor-inspired)
+     ═══════════════════════════════════════════════════════ -->
+<div id="app-view" class="hidden">
+
+    <header id="top-bar">
+        <div id="top-left">
+            <button id="btn-home" class="icon-btn" title="Back to workspaces">
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5l-6 5v7h4.5v-4h3v4h4.5v-7l-6-5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+            </button>
+            <span class="bar-sep"></span>
+            <div id="sidebar-tabs">
+                <button class="stab active" data-pane="problem-pane">Problem</button>
+                <button class="stab" data-pane="theory-pane">Theory</button>
+                <button class="stab" data-pane="chat-pane">Chat</button>
+            </div>
+        </div>
+        <div id="top-center">
+            <span id="top-problem"></span>
+            <span id="top-difficulty"></span>
+        </div>
+        <div id="top-right">
+            <div class="toolbar-actions">
+                <button class="tool-btn" id="btn-run">
+                    <svg width="10" height="11" viewBox="0 0 10 11" fill="none"><path d="M1 1v9l8-4.5L1 1z" fill="currentColor"/></svg>
+                    Run
+                </button>
+                <button class="tool-btn" id="btn-test">
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 5.5l3 3 6-7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Test
+                </button>
+                <button class="tool-btn primary" id="btn-submit">
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M5.5 9V2m0 0L2.5 5M5.5 2l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Submit
+                </button>
+                <span class="toolbar-sep"></span>
+                <button class="tool-btn" id="btn-scaffold" title="Get easier prerequisite">
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 9h9M3 9V5M5.5 9V3M8 9V1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    Scaffold
+                </button>
+                <button class="tool-btn" id="btn-skip" title="Skip this problem">
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 2l4 3.5L1 9V2zM6 2l4 3.5L6 9V2z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+                    Skip
+                </button>
+                <span class="toolbar-sep"></span>
+                <button class="tool-btn" id="btn-autocomplete" title="Toggle autocomplete">
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 3l4 4-4 4M6 9h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span id="autocomplete-label">AC</span>
+                </button>
+                <button class="tool-btn" id="btn-pomodoro" title="Start pomodoro timer (25 min)">
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="6" r="4.5" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 3.5v3l2 1.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 1.5h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                    <span id="pomodoro-label"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div id="app-main">
+
+        <!-- Left: Problem / Theory sidebar -->
+        <div id="sidebar">
+            <div id="sidebar-inner">
+                <div id="problem-pane" class="sidebar-pane active">
+                    <div id="problem-md" class="md-body"></div>
+                </div>
+                <div id="theory-pane" class="sidebar-pane">
+                    <div id="theory-md" class="md-body"></div>
+                </div>
+                <div id="chat-pane" class="sidebar-pane">
+                    <div id="chat-scroll">
+                        <div id="typing-indicator" class="hidden">
+                            <div class="typing-dots"><span></span><span></span><span></span></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="sidebar-empty">
+                    <p class="empty-label">No problem loaded</p>
+                    <p class="empty-hint">Generating your first problem...</p>
+                </div>
+            </div>
+            <div id="input-row">
+                <textarea id="command-input" rows="1"
+                          placeholder="Ask Claude anything..."
+                          autocomplete="off" spellcheck="false"></textarea>
+            </div>
+        </div>
+
+        <!-- Vertical resize handle -->
+        <div class="resize-handle resize-h" id="resize-sidebar"></div>
+
+        <!-- Right: Editor + bottom panels -->
+        <div id="main-col">
+            <!-- Editor -->
+            <div id="editor-panel">
+                <div id="editor-container"></div>
+                <div id="derivation-editor" class="hidden"></div>
+            </div>
+
+            <!-- Horizontal resize handle -->
+            <div class="resize-handle resize-v" id="resize-bottom"></div>
+
+            <!-- Bottom bar: Output + Chat tabs -->
+            <div id="bottom-bar">
+                <div id="bottom-tabs">
+                    <button class="btab active" data-panel="tests-panel">Tests</button>
+                    <button class="btab" data-panel="output-panel">Output</button>
+                    <button class="btab" data-panel="preview-panel">Preview</button>
+                </div>
+                <div id="tests-panel" class="bottom-panel active">
+                    <div id="tests-scroll"></div>
+                </div>
+                <div id="output-panel" class="bottom-panel">
+                    <div id="output-scroll"></div>
+                </div>
+                <div id="preview-panel" class="bottom-panel">
+                    <div id="preview-scroll" class="md-body"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="confirm-overlay" class="overlay hidden">
+    <div id="confirm-modal" class="glass-card narrow">
+        <div class="glass-edge"></div>
+        <p id="confirm-message"></p>
+        <div class="confirm-actions">
+            <button class="ghost-btn" id="confirm-no">Cancel</button>
+            <button class="ghost-btn destructive" id="confirm-yes">Skip</button>
+        </div>
+    </div>
+</div>
+
+<div id="problems-overlay" class="overlay hidden">
+    <div id="problems-modal" class="glass-card wide">
+        <div class="glass-edge"></div>
+        <div class="modal-header">
+            <span class="modal-title">Problems</span>
+            <button class="modal-close">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <div id="problems-table-wrap">
+            <table id="problems-table">
+                <thead><tr><th>Title</th><th>Category</th><th>Difficulty</th><th>Status</th><th>Attempts</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="progress-overlay" class="overlay hidden">
+    <div id="progress-modal" class="glass-card">
+        <div class="glass-edge"></div>
+        <div class="modal-header">
+            <span class="modal-title">Progress</span>
+            <button class="modal-close">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <div id="progress-content"></div>
+    </div>
+</div>
+
+<div id="pomo-break-overlay" class="hidden">
+    <div id="pomo-break-content">
+        <div id="pomo-break-title">Take a break</div>
+        <div id="pomo-break-timer"></div>
+        <button id="pomo-break-skip" title="Skip break">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3l5 5-5 5V3zM9 3l5 5-5 5V3z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        </button>
+    </div>
+</div>
+
+<div id="loading-overlay" class="hidden">
+    <div id="loading-content">
+        <div class="spinner"></div>
+        <p id="loading-label">Generating problem...</p>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>
