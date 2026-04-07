@@ -20,6 +20,7 @@ class _CommandsProto(Protocol):
     current_problem: ProblemMeta | None
     current_problem_dir: Path | None
     _cmd_lock: asyncio.Lock
+    _confirm_future: asyncio.Future[bool] | None
     ws: _WsProto
 
     async def send(self, msg: dict) -> None: ...
@@ -37,29 +38,31 @@ class CommandsMixin:
     session: Session | None
     current_problem: ProblemMeta | None
     current_problem_dir: Path | None
+    _confirm_future: asyncio.Future[bool] | None
 
     async def _cmd_run(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem is None or self._cmd_lock.locked():
             return
         if self.current_problem.format == "markdown":
             return
-        await self.set_busy(True)
-        await self.send({"type": "clear_log"})
-        try:
-            from .runner import run_solution
+        async with self._cmd_lock:
+            await self.set_busy(True)
+            await self.send({"type": "clear_log"})
+            try:
+                from .runner import run_solution
 
-            result = await asyncio.to_thread(run_solution, str(self.current_problem_dir))
-            await self.send(
-                {
-                    "type": "log",
-                    "text": result.output,
-                    "error": not result.passed,
-                }
-            )
-        except Exception as e:
-            await self.send_log(f'<span class="c-error">error: {e}</span>')
-        finally:
-            await self.set_busy(False)
+                result = await asyncio.to_thread(run_solution, str(self.current_problem_dir))
+                await self.send(
+                    {
+                        "type": "log",
+                        "text": result.output,
+                        "error": not result.passed,
+                    }
+                )
+            except Exception as e:
+                await self.send_log(f'<span class="c-error">error: {e}</span>')
+            finally:
+                await self.set_busy(False)
 
     async def _cmd_test(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem is None or self._cmd_lock.locked():
@@ -68,31 +71,32 @@ class CommandsMixin:
             return
         if self.session is None:
             return
-        await self.set_busy(True)
-        try:
-            meta, result = await asyncio.to_thread(self.session.test_solution)
-            if result is None:
-                await self.send_log('<span class="c-error">no active problem</span>')
-                return
-            tests = parse_pytest_output(result.output)
-            details = extract_failure_details(result.output) if not result.passed else {}
-            for t in tests:
-                if t["status"] == "failed" and t["name"] in details:
-                    t["detail"] = details[t["name"]]
-            await self.send(
-                {
-                    "type": "test_results",
-                    "label": "Open Tests",
-                    "passed": result.passed,
-                    "num_passed": result.num_passed,
-                    "num_failed": result.num_failed,
-                    "tests": tests,
-                }
-            )
-        except Exception as e:
-            await self.send_log(f'<span class="c-error">error: {e}</span>')
-        finally:
-            await self.set_busy(False)
+        async with self._cmd_lock:
+            await self.set_busy(True)
+            try:
+                meta, result = await asyncio.to_thread(self.session.test_solution)
+                if result is None:
+                    await self.send_log('<span class="c-error">no active problem</span>')
+                    return
+                tests = parse_pytest_output(result.output)
+                details = extract_failure_details(result.output) if not result.passed else {}
+                for t in tests:
+                    if t["status"] == "failed" and t["name"] in details:
+                        t["detail"] = details[t["name"]]
+                await self.send(
+                    {
+                        "type": "test_results",
+                        "label": "Open Tests",
+                        "passed": result.passed,
+                        "num_passed": result.num_passed,
+                        "num_failed": result.num_failed,
+                        "tests": tests,
+                    }
+                )
+            except Exception as e:
+                await self.send_log(f'<span class="c-error">error: {e}</span>')
+            finally:
+                await self.set_busy(False)
 
     async def _cmd_submit(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem is None or self._cmd_lock.locked():
@@ -102,42 +106,43 @@ class CommandsMixin:
             return
         if self.session is None:
             return
-        await self.set_busy(True)
-        await self.send_log('<span class="dim">Submitting for review...</span>')
-        try:
-            meta, open_result, hidden_result, verdict = await asyncio.to_thread(self.session.submit_solution)
-            if verdict is None:
-                await self.send_log('<span class="c-error">no active problem</span>')
-                return
-            open_tests = parse_pytest_output(open_result.output)
-            hidden_tests = parse_pytest_output(hidden_result.output)
-            open_details = extract_failure_details(open_result.output) if not open_result.passed else {}
-            hidden_details = extract_failure_details(hidden_result.output) if not hidden_result.passed else {}
-            for t in open_tests:
-                if t["status"] == "failed" and t["name"] in open_details:
-                    t["detail"] = open_details[t["name"]]
-            for t in hidden_tests:
-                if t["status"] == "failed" and t["name"] in hidden_details:
-                    t["detail"] = hidden_details[t["name"]]
-            await self.send(
-                {
-                    "type": "test_results",
-                    "label": "Submission",
-                    "passed": open_result.passed and hidden_result.passed,
-                    "num_passed": open_result.num_passed + hidden_result.num_passed,
-                    "num_failed": open_result.num_failed + hidden_result.num_failed,
-                    "tests": open_tests + hidden_tests,
-                    "sections": [
-                        {"label": "Open Tests", "passed": open_result.passed, "tests": open_tests},
-                        {"label": "Hidden Tests", "passed": hidden_result.passed, "tests": hidden_tests},
-                    ],
-                }
-            )
-            await self._send_verdict(meta, verdict)
-        except Exception as e:
-            await self.send_log(f'<span class="c-error">error: {e}</span>')
-        finally:
-            await self.set_busy(False)
+        async with self._cmd_lock:
+            await self.set_busy(True)
+            await self.send_log('<span class="dim">Submitting for review...</span>')
+            try:
+                meta, open_result, hidden_result, verdict = await asyncio.to_thread(self.session.submit_solution)
+                if verdict is None:
+                    await self.send_log('<span class="c-error">no active problem</span>')
+                    return
+                open_tests = parse_pytest_output(open_result.output)
+                hidden_tests = parse_pytest_output(hidden_result.output)
+                open_details = extract_failure_details(open_result.output) if not open_result.passed else {}
+                hidden_details = extract_failure_details(hidden_result.output) if not hidden_result.passed else {}
+                for t in open_tests:
+                    if t["status"] == "failed" and t["name"] in open_details:
+                        t["detail"] = open_details[t["name"]]
+                for t in hidden_tests:
+                    if t["status"] == "failed" and t["name"] in hidden_details:
+                        t["detail"] = hidden_details[t["name"]]
+                await self.send(
+                    {
+                        "type": "test_results",
+                        "label": "Submission",
+                        "passed": open_result.passed and hidden_result.passed,
+                        "num_passed": open_result.num_passed + hidden_result.num_passed,
+                        "num_failed": open_result.num_failed + hidden_result.num_failed,
+                        "tests": open_tests + hidden_tests,
+                        "sections": [
+                            {"label": "Open Tests", "passed": open_result.passed, "tests": open_tests},
+                            {"label": "Hidden Tests", "passed": hidden_result.passed, "tests": hidden_tests},
+                        ],
+                    }
+                )
+                await self._send_verdict(meta, verdict)
+            except Exception as e:
+                await self.send_log(f'<span class="c-error">error: {e}</span>')
+            finally:
+                await self.set_busy(False)
 
     async def _cmd_submit_derivation(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.session is None:
@@ -180,24 +185,25 @@ class CommandsMixin:
             return
         if self.session is None:
             return
-        await self.set_busy(True)
-        await self.send({"type": "generating"})
-        await self.send({"type": "clear_log"})
-        await self.send_log('<span class="dim">Generating easier prerequisite...</span>')
-        try:
-            original, scaffold_meta, scaffold_dir = await asyncio.to_thread(self.session.scaffold_problem)
-            if scaffold_meta and scaffold_dir:
-                self.current_problem = scaffold_meta
-                self.current_problem_dir = scaffold_dir
-                payload = self._problem_payload(scaffold_meta, scaffold_dir)
-                await self.send({"type": "problem_loaded", "problem": payload})
-                await self.send({"type": "clear_log"})
-            else:
-                await self.send_log('<span class="c-error">Could not generate scaffold</span>')
-        except Exception as e:
-            await self.send_log(f'<span class="c-error">error: {e}</span>')
-        finally:
-            await self.set_busy(False)
+        async with self._cmd_lock:
+            await self.set_busy(True)
+            await self.send({"type": "generating"})
+            await self.send({"type": "clear_log"})
+            await self.send_log('<span class="dim">Generating easier prerequisite...</span>')
+            try:
+                original, scaffold_meta, scaffold_dir = await asyncio.to_thread(self.session.scaffold_problem)
+                if scaffold_meta and scaffold_dir:
+                    self.current_problem = scaffold_meta
+                    self.current_problem_dir = scaffold_dir
+                    payload = self._problem_payload(scaffold_meta, scaffold_dir)
+                    await self.send({"type": "problem_loaded", "problem": payload})
+                    await self.send({"type": "clear_log"})
+                else:
+                    await self.send_log('<span class="c-error">Could not generate scaffold</span>')
+            except Exception as e:
+                await self.send_log(f'<span class="c-error">error: {e}</span>')
+            finally:
+                await self.set_busy(False)
 
     async def _cmd_give_up(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem is None:
@@ -211,26 +217,27 @@ class CommandsMixin:
                 "message": f"Skip '{self.current_problem.title}'?",
             }
         )
+        future: asyncio.Future[bool] = asyncio.get_event_loop().create_future()
+        self._confirm_future = future
         try:
-            while True:
-                data = await asyncio.wait_for(self.ws.receive_json(), timeout=30)  # type: ignore[union-attr]
-                if data.get("type") == "confirm_response":
-                    if data.get("confirmed"):
-                        meta = self.session.give_up()
-                        if meta is None:
-                            return
-                        await self.send_log(f'<span class="dim">Skipped: {meta.title}</span>')
-                        current = self.session.get_current()
-                        if current and current.id != meta.id and current.status == ProblemStatus.IN_PROGRESS:
-                            self.current_problem = current
-                            self.current_problem_dir = self.session._problem_dir(current.id)
-                            payload = self._problem_payload(current, self.current_problem_dir)
-                            await self.send({"type": "problem_loaded", "problem": payload})
-                        else:
-                            await self._generate_next()
-                    return
-        except TimeoutError:
+            confirmed = await asyncio.wait_for(future, timeout=30)
+        except (TimeoutError, asyncio.CancelledError):
             return
+        finally:
+            self._confirm_future = None
+        if confirmed:
+            meta = self.session.give_up()
+            if meta is None:
+                return
+            await self.send_log(f'<span class="dim">Skipped: {meta.title}</span>')
+            current = self.session.get_current()
+            if current and current.id != meta.id and current.status == ProblemStatus.IN_PROGRESS:
+                self.current_problem = current
+                self.current_problem_dir = self.session._problem_dir(current.id)
+                payload = self._problem_payload(current, self.current_problem_dir)
+                await self.send({"type": "problem_loaded", "problem": payload})
+            else:
+                await self._generate_next()
 
     async def _cmd_show(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem and self.current_problem_dir:

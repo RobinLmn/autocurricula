@@ -15,6 +15,7 @@ class _HandlersProto(Protocol):
     session: Session | None
     current_problem: ProblemMeta | None
     current_problem_dir: Path | None
+    _confirm_future: asyncio.Future[bool] | None
     _chat_busy: bool
     _chat_queue: list[dict]
 
@@ -315,4 +316,5 @@ class HandlersMixin:
         await self.send({"type": "signatures_result", "id": req_id, "signatures": result})
 
     async def _handle_confirm_response(self: _HandlersProto, data: dict) -> None:  # type: ignore[misc]
-        pass
+        if self._confirm_future and not self._confirm_future.done():
+            self._confirm_future.set_result(bool(data.get("confirmed")))

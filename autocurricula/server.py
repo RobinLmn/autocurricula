@@ -52,12 +52,12 @@ def run_server(role: str | None = None, port: int = 8420) -> None:
     global _initial_role
     _initial_role = role
 
-    import resource
-
     try:
+        import resource
+
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
         resource.setrlimit(resource.RLIMIT_NOFILE, (min(hard, 10240), hard))
-    except (ValueError, OSError):
+    except (ModuleNotFoundError, ValueError, OSError):
         pass
 
     import uvicorn

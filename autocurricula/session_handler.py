@@ -24,6 +24,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         self.current_problem_dir: Path | None = None
         self._busy = False
         self._cmd_lock = asyncio.Lock()
+        self._confirm_future: asyncio.Future[bool] | None = None
         self._chat_busy = False
         self._chat_queue: list[dict] = []
         self._initial_role = role
