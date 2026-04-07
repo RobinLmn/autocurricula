@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
 
-class Difficulty(StrEnum):
+class Difficulty(str, Enum):
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
 
 
-class ProblemStatus(StrEnum):
+class ProblemStatus(str, Enum):
     IN_PROGRESS = "in_progress"
     SOLVED = "solved"
     FAILED = "failed"

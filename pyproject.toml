@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Adaptive coding interview practice powered by Claude"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 authors = [
     { name = "Robin Leman", email = "robin.leman@mail.mcgill.ca" },
 ]
@@ -18,6 +18,8 @@ classifiers = [
     "Environment :: Web Environment",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Education",
@@ -46,14 +48,14 @@ dev = [
 ]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py39"
 line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
 
