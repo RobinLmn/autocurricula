@@ -39,12 +39,12 @@ function renderPieChart(tags, size = 80) {
   });
 
   const legend = entries.slice(0, 6).map(([tag], i) =>
-    `<span class="pie-legend-item"><span class="pie-dot" style="background:${TAG_COLORS[i % TAG_COLORS.length]}"></span>${esc(tag)}</span>`
+    `<span class="pie-legend-item">${esc(tag)}<span class="pie-dot" style="background:${TAG_COLORS[i % TAG_COLORS.length]}"></span></span>`
   ).join('');
 
   return `<div class="ws-pie-wrap">
-    <svg class="ws-pie" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>
     <div class="pie-legend">${legend}</div>
+    <svg class="ws-pie" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>
   </div>`;
 }
 
