@@ -272,9 +272,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         await self.send({"type": "clear_log"})
         await self.send_log('<span class="dim">Generating and validating problem...</span>')
         try:
-            next_meta, next_problem_dir = await asyncio.to_thread(
-                self.session.start_problem, user_prompt=prompt
-            )
+            next_meta, next_problem_dir = await asyncio.to_thread(self.session.start_problem, user_prompt=prompt)
             if self._generate_cancelled:
                 if self.session is not None:
                     self.session.delete_problem(next_meta.id)

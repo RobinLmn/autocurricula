@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import re as _re
+import time as _time
 import webbrowser
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 from .session_handler import SessionHandler
 from .workspace import WORKSPACES_DIR
@@ -33,10 +36,6 @@ def _safe_subpath(base: Path, untrusted: str) -> Path | None:
 app = FastAPI()
 
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-
-
 class NoCacheMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -47,9 +46,6 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(NoCacheMiddleware)
 
-import re as _re
-import time as _time
-
 _boot_version = str(int(_time.time()))
 
 
@@ -59,9 +55,11 @@ async def serve_js(filename: str):
     filepath = STATIC_DIR / "js" / filename
     if not filepath.resolve().is_relative_to((STATIC_DIR / "js").resolve()):
         from starlette.responses import Response
+
         return Response(status_code=404)
     if not filepath.exists():
         from starlette.responses import Response
+
         return Response(status_code=404)
     content = filepath.read_text()
     # Rewrite relative ES module imports to bust cache
@@ -71,11 +69,13 @@ async def serve_js(filename: str):
         content,
     )
     from starlette.responses import Response
+
     return Response(
         content=content,
         media_type="application/javascript",
         headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
     )
+
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -83,11 +83,13 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.get("/")
 async def index():
     import time
+
     html = (STATIC_DIR / "index.html").read_text()
     # Bust browser module cache by appending version to JS/CSS imports
     v = str(int(time.time()))
-    html = html.replace(".css\"", f".css?v={v}\"").replace(".js\"", f".js?v={v}\"")
+    html = html.replace('.css"', f'.css?v={v}"').replace('.js"', f'.js?v={v}"')
     from starlette.responses import HTMLResponse
+
     return HTMLResponse(html)
 
 

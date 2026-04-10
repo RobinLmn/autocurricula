@@ -133,7 +133,8 @@ Progress so far:
 Based on this history, decide what the student should practice next. Consider:
 - **Breadth first**: prioritize tags and topics the student hasn't covered yet. \
 For coding, rotate across data structures (array, string, tree, graph, linked-list, stack, queue, heap) \
-and techniques (dynamic-programming, greedy, sliding-window, two-pointers, bfs, dfs, binary-search, backtracking, sorting). \
+and techniques (dynamic-programming, greedy, sliding-window, two-pointers, bfs, dfs, \
+binary-search, backtracking, sorting). \
 Check the "Tags covered so far" section and pick under-represented tags.
 - Which categories they've under-practiced or struggled with
 - Whether to escalate, maintain, or reduce difficulty
@@ -176,8 +177,8 @@ For python problems:
 - Make sure tests are self-contained and correct"""
 
     if user_prompt:
-        prompt += f"\n\nThe student specifically requested: \"{user_prompt}\". \
-Incorporate this into your problem choice while still following all the rules above."
+        prompt += f'\n\nThe student specifically requested: "{user_prompt}". \
+Incorporate this into your problem choice while still following all the rules above.'
 
     raw = _call_claude(prompt)
     data = _extract_json(raw)

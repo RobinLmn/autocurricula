@@ -19,6 +19,7 @@ class _HandlersProto(Protocol):
     _chat_busy: bool
     _chat_queue: list[dict]
     _generate_cancelled: bool
+    _generate_task: asyncio.Task | None
 
     async def send(self, msg: dict) -> None: ...
     async def send_log(self, html: str, style: str = ...) -> None: ...
@@ -27,6 +28,7 @@ class _HandlersProto(Protocol):
     async def _send_app_state(self) -> None: ...
     async def _send_landing(self) -> None: ...
     async def _generate_next(self, prompt: str = "") -> None: ...
+    def _spawn_generate(self, prompt: str = "") -> None: ...
     async def _process_chat_queue(self) -> None: ...
     async def _cmd_run(self) -> None: ...
     async def _cmd_test(self) -> None: ...
@@ -55,6 +57,7 @@ class HandlersMixin:
                 await self._generate_next(prompt=prompt)
             finally:
                 await self.set_busy(False)
+
         self._generate_task = asyncio.create_task(_run())
 
     async def _handle_select_workspace(self: _HandlersProto, data: dict) -> None:  # type: ignore[misc]
@@ -81,11 +84,13 @@ class HandlersMixin:
         prompt = data.get("prompt", "").strip() if new_problem else ""
         if new_problem:
             # Send app state without loading existing problem
-            await self.send({
-                "type": "state",
-                "needs_onboarding": False,
-                "role": session.role,
-            })
+            await self.send(
+                {
+                    "type": "state",
+                    "needs_onboarding": False,
+                    "role": session.role,
+                }
+            )
             self._spawn_generate(prompt=prompt)
         else:
             await self._send_app_state()
