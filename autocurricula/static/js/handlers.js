@@ -1,7 +1,7 @@
 import { $, state, pendingRequests, hideLoading, showLoading, updateLoadingProgress } from './state.js';
 import { send } from './websocket.js';
 import { initMonaco } from './editor.js';
-import { showClaudeError, renderWorkspaces } from './landing.js';
+import { showClaudeError, renderWorkspaces, renderUsage24h } from './landing.js';
 import { loadProblem, appendOutput, appendChat, promoteQueuedMessages, showRatingPrompt, showNextButton, renderTestResults } from './problem.js';
 import { switchSidebarTab, switchBottomTab, setButtonsDisabled, showProblemsModal, showProgressModal, showConfirmModal } from './ui.js';
 
@@ -17,6 +17,7 @@ export const handlers = {
   landing(msg) {
     hideLoading();
     renderWorkspaces(msg.workspaces || []);
+    renderUsage24h(msg.usage_24h || null);
     showClaudeError(msg.claude_error || null);
     showView('landing');
   },

@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .commands import CommandsMixin
-from .engine import GenerationProgress
+from .engine import GenerationProgress, get_usage_last_24h
 from .handlers import HandlersMixin
 from .models import ProblemMeta, ProblemStatus
 from .progress import load_progress
@@ -144,6 +144,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
             {
                 "type": "landing",
                 "workspaces": self._get_workspaces_data(),
+                "usage_24h": get_usage_last_24h(),
                 **({"claude_error": claude_error} if claude_error else {}),
             }
         )

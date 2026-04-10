@@ -48,6 +48,25 @@ function renderPieChart(tags, size = 80) {
   </div>`;
 }
 
+function formatTokens(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return String(n);
+}
+
+export function renderUsage24h(usage) {
+  const el = $('#landing-usage');
+  if (!el) return;
+  if (!usage || usage.total_tokens === 0) {
+    el.classList.add('hidden');
+    return;
+  }
+  const parts = [`${formatTokens(usage.total_tokens)} tokens`];
+  if (usage.cost_usd > 0) parts.push(`$${usage.cost_usd.toFixed(2)}`);
+  el.textContent = `Last 24h: ${parts.join(' · ')}`;
+  el.classList.remove('hidden');
+}
+
 export function showClaudeError(error) {
   let banner = $('#claude-error-banner');
   if (!error) {

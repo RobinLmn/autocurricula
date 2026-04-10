@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .models import GeneratedContent, GeneratedDerivation, GeneratedProblem, SubmissionVerdict
@@ -60,6 +62,60 @@ class GenerationProgress:
         }
 
 
+_USAGE_LOG: Path | None = None
+
+
+def _get_usage_log() -> Path:
+    global _USAGE_LOG
+    if _USAGE_LOG is None:
+        from .workspace import DATA_DIR
+        _USAGE_LOG = DATA_DIR / "token_usage.jsonl"
+    return _USAGE_LOG
+
+
+def _log_usage(usage: ClaudeUsage) -> None:
+    """Append a usage record to the global JSONL log."""
+    path = _get_usage_log()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "ts": time.time(),
+        "input_tokens": usage.input_tokens + usage.cache_read_input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cost_usd": usage.cost_usd,
+    }
+    with open(path, "a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+def get_usage_last_24h() -> dict:
+    """Return aggregated token usage from the last 24 hours."""
+    path = _get_usage_log()
+    cutoff = time.time() - 86400
+    total_input = 0
+    total_output = 0
+    total_cost = 0.0
+    if path.exists():
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if rec.get("ts", 0) >= cutoff:
+                    total_input += rec.get("input_tokens", 0)
+                    total_output += rec.get("output_tokens", 0)
+                    total_cost += rec.get("cost_usd", 0.0)
+    return {
+        "input_tokens": total_input,
+        "output_tokens": total_output,
+        "total_tokens": total_input + total_output,
+        "cost_usd": round(total_cost, 4),
+    }
+
+
 def _call_claude(prompt: str) -> tuple[str, ClaudeUsage]:
     result = subprocess.run(
         ["claude", "-p", "--output-format", "json", prompt],
@@ -71,6 +127,7 @@ def _call_claude(prompt: str) -> tuple[str, ClaudeUsage]:
         raise RuntimeError(f"Claude call failed: {result.stderr}")
     data = json.loads(result.stdout)
     usage = ClaudeUsage.from_json(data)
+    _log_usage(usage)
     text = data.get("result", "").strip()
     return text, usage
 
