@@ -266,9 +266,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         try:
             loop = asyncio.get_event_loop()
             on_progress, _ = self._make_progress_callback(loop)
-            meta, problem_dir = await asyncio.to_thread(
-                self.session.start_problem, False, on_progress=on_progress
-            )
+            meta, problem_dir = await asyncio.to_thread(self.session.start_problem, False, on_progress=on_progress)
             self._pooled_problem = (meta, problem_dir)
         except Exception:
             self._pooled_problem = None

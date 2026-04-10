@@ -39,6 +39,7 @@ class ClaudeUsage:
 @dataclass
 class GenerationProgress:
     """Accumulates token usage across multiple Claude calls during generation."""
+
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_cost_usd: float = 0.0
@@ -69,6 +70,7 @@ def _get_usage_log() -> Path:
     global _USAGE_LOG
     if _USAGE_LOG is None:
         from .workspace import DATA_DIR
+
         _USAGE_LOG = DATA_DIR / "token_usage.jsonl"
     return _USAGE_LOG
 

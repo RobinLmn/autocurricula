@@ -120,9 +120,7 @@ class Session:
 
             open_result = run_tests(str(d), hidden=False)
             if not open_result.passed:
-                generated = fix_problem(
-                    generated, f"Open tests failed:\n{open_result.output}", on_progress=on_progress
-                )
+                generated = fix_problem(generated, f"Open tests failed:\n{open_result.output}", on_progress=on_progress)
                 continue
 
             hidden_result = run_tests(str(d), hidden=True)
