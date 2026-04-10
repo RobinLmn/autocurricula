@@ -1,6 +1,29 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
+
+
+def extract_test_assertions(test_path: Path) -> dict[str, str]:
+    """Extract assert statements from a test file, keyed by test function name."""
+    if not test_path.exists():
+        return {}
+    source = test_path.read_text()
+    details: dict[str, str] = {}
+    current_fn = None
+    asserts: list[str] = []
+    for line in source.splitlines():
+        fn_match = re.match(r"^def (test_\w+)\(", line)
+        if fn_match:
+            if current_fn and asserts:
+                details[current_fn] = "\n".join(asserts)
+            current_fn = fn_match.group(1)
+            asserts = []
+        elif current_fn and "assert" in line:
+            asserts.append(line.strip())
+    if current_fn and asserts:
+        details[current_fn] = "\n".join(asserts)
+    return details
 
 
 def parse_pytest_output(output: str) -> list[dict]:
@@ -63,9 +86,19 @@ def _format_failure(lines: list[str]) -> str:
     """Turn a raw pytest failure block into a clean Expected/Got or error summary."""
     text = "\n".join(lines)
 
-    e_assert_eq = re.search(r"^E\s+assert\s+(.+?)\s*==\s*(.+?)$", text, re.MULTILINE)
+    e_assert_eq = re.search(r"^E\s+assert\s+(.+)\s*==\s*(.+)$", text, re.MULTILINE)
     if e_assert_eq:
         got, expected = e_assert_eq.group(1).strip(), e_assert_eq.group(2).strip()
+        # Resolve actual values from pytest "where" lines
+        where_vals: dict[str, str] = {}
+        for ln in lines:
+            s = ln.strip()
+            if "+  where" in s or "+ where" in s:
+                wm = re.search(r"where\s+(.+?)\s*=\s*(.+)", s)
+                if wm:
+                    where_vals[wm.group(2).strip()] = wm.group(1).strip()
+        for expr, val in where_vals.items():
+            got = got.replace(expr, val)
         return f"Expected: {expected}\nGot: {got}"
 
     abs_match = re.search(r"assert\s+abs\((.+?)\)\s*<\s*(.+?)$", text, re.MULTILINE)
@@ -80,7 +113,7 @@ def _format_failure(lines: list[str]) -> str:
                 return f"Expected: ~{expected_val}\nGot: {got_val}"
         return f"Assertion failed: abs({abs_match.group(1)}) < {abs_match.group(2)}"
 
-    assert_match = re.search(r"assert\s+(.+?)$", text, re.MULTILINE)
+    assert_match = re.search(r"^E\s+assert\s+(.+?)$", text, re.MULTILINE)
     if assert_match:
         assertion = assert_match.group(1).strip()
         where_lines = [ln.strip() for ln in lines if "+  where" in ln or "+ where" in ln]

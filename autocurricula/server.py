@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import re as _re
+import time as _time
 import webbrowser
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 from .session_handler import SessionHandler
 from .workspace import WORKSPACES_DIR
@@ -30,22 +34,90 @@ def _safe_subpath(base: Path, untrusted: str) -> Path | None:
 
 
 app = FastAPI()
+
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        return response
+
+
+app.add_middleware(NoCacheMiddleware)
+
+_boot_version = str(int(_time.time()))
+
+
+@app.get("/static/js/{filename:path}")
+async def serve_js(filename: str):
+    """Serve JS files with cache-busted module imports."""
+    filepath = STATIC_DIR / "js" / filename
+    if not filepath.resolve().is_relative_to((STATIC_DIR / "js").resolve()):
+        from starlette.responses import Response
+
+        return Response(status_code=404)
+    if not filepath.exists():
+        from starlette.responses import Response
+
+        return Response(status_code=404)
+    content = filepath.read_text()
+    # Rewrite relative ES module imports to bust cache
+    content = _re.sub(
+        r"""(from\s+['"]\..*?)(\.js)(['"])""",
+        rf"\1.js?v={_boot_version}\3",
+        content,
+    )
+    from starlette.responses import Response
+
+    return Response(
+        content=content,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.get("/")
 async def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    import time
+
+    html = (STATIC_DIR / "index.html").read_text()
+    # Bust browser module cache by appending version to JS/CSS imports
+    v = str(int(time.time()))
+    html = html.replace('.css"', f'.css?v={v}"').replace('.js"', f'.js?v={v}"')
+    from starlette.responses import HTMLResponse
+
+    return HTMLResponse(html)
 
 
 _initial_role: str | None = None
 
 
+_shutdown_task: asyncio.Task | None = None
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    global _shutdown_task
+    if _shutdown_task is not None:
+        _shutdown_task.cancel()
+        _shutdown_task = None
     await ws.accept()
     handler = SessionHandler(ws, role=_initial_role)
     await handler.run()
+    # Client disconnected — schedule shutdown after grace period for refreshes
+    _shutdown_task = asyncio.create_task(_delayed_shutdown(3.0))
+
+
+async def _delayed_shutdown(delay: float) -> None:
+    await asyncio.sleep(delay)
+    import os
+    import signal
+
+    os.kill(os.getpid(), signal.SIGINT)
 
 
 def run_server(role: str | None = None, port: int = 8420) -> None:

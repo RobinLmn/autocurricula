@@ -7,6 +7,7 @@ export const state = {
   autocompleteEnabled: true,
   pendingNext: null,
   derivEditor: null,
+  chatBusy: false,
 };
 
 export const pendingRequests = {};
@@ -20,11 +21,13 @@ export function esc(s) {
   return d.innerHTML;
 }
 
-export function showLoading(label) {
+export function showLoading(label, cancellable = false) {
   $('#loading-label').textContent = label || 'Loading...';
+  $('#loading-cancel').classList.toggle('hidden', !cancellable);
   $('#loading-overlay').classList.remove('hidden');
 }
 
 export function hideLoading() {
   $('#loading-overlay').classList.add('hidden');
+  $('#loading-cancel').classList.add('hidden');
 }

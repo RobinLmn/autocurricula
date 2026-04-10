@@ -1,6 +1,53 @@
 import { $, esc, showLoading } from './state.js';
 import { send } from './websocket.js';
 
+const TAG_COLORS = [
+  '#528bff', '#2fce6b', '#f0c526', '#f04438', '#a78bfa',
+  '#f97316', '#06b6d4', '#ec4899', '#84cc16', '#8b5cf6',
+  '#14b8a6', '#e879f9', '#eab308', '#6366f1', '#fb923c',
+];
+
+function renderPieChart(tags, size = 80) {
+  const entries = Object.entries(tags).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return '';
+  const total = entries.reduce((s, e) => s + e[1], 0);
+  const r = size / 2;
+  const cx = r, cy = r;
+  const ir = r * 0.55;
+
+  let paths = '';
+  let angle = -Math.PI / 2;
+  entries.forEach(([tag, count], i) => {
+    const sweep = (count / total) * Math.PI * 2;
+    const color = TAG_COLORS[i % TAG_COLORS.length];
+    if (sweep >= Math.PI * 2 - 0.001) {
+      // Full circle — arc with identical endpoints is invisible, use two semicircles
+      paths += `<path d="M${cx},${cy - r} A${r},${r} 0 1 1 ${cx},${cy + r} A${r},${r} 0 1 1 ${cx},${cy - r} L${cx},${cy - ir} A${ir},${ir} 0 1 0 ${cx},${cy + ir} A${ir},${ir} 0 1 0 ${cx},${cy - ir}Z" fill="${color}"><title>${tag}: ${count}</title></path>`;
+    } else {
+      const large = sweep > Math.PI ? 1 : 0;
+      const x1 = cx + r * Math.cos(angle);
+      const y1 = cy + r * Math.sin(angle);
+      const x2 = cx + r * Math.cos(angle + sweep);
+      const y2 = cy + r * Math.sin(angle + sweep);
+      const ix1 = cx + ir * Math.cos(angle);
+      const iy1 = cy + ir * Math.sin(angle);
+      const ix2 = cx + ir * Math.cos(angle + sweep);
+      const iy2 = cy + ir * Math.sin(angle + sweep);
+      paths += `<path d="M${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} L${ix2},${iy2} A${ir},${ir} 0 ${large} 0 ${ix1},${iy1}Z" fill="${color}"><title>${tag}: ${count}</title></path>`;
+    }
+    angle += sweep;
+  });
+
+  const legend = entries.slice(0, 6).map(([tag], i) =>
+    `<span class="pie-legend-item"><span class="pie-dot" style="background:${TAG_COLORS[i % TAG_COLORS.length]}"></span>${esc(tag)}</span>`
+  ).join('');
+
+  return `<div class="ws-pie-wrap">
+    <svg class="ws-pie" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>
+    <div class="pie-legend">${legend}</div>
+  </div>`;
+}
+
 export function showClaudeError(error) {
   let banner = $('#claude-error-banner');
   if (!error) {
@@ -38,13 +85,8 @@ export function renderWorkspaces(workspaces) {
       send({ type: 'select_workspace', slug: ws.slug });
     });
 
-    const cats = Object.keys(ws.categories || {}).slice(0, 4);
-    const catPills = cats.map(c => `<span class="ws-cat-pill">${c}</span>`).join('');
-
-    const total = ws.total || 1;
-    const solvedW = Math.max(0, (ws.solved / total) * 100);
-    const failedW = Math.max(0, (ws.failed / total) * 100);
-    const ipW = Math.max(0, (ws.in_progress / total) * 100);
+    const tags = ws.tags || {};
+    const pieHtml = renderPieChart(tags);
 
     card.innerHTML = `
       <div class="ws-card-main">
@@ -54,14 +96,14 @@ export function renderWorkspaces(workspaces) {
           <span class="ws-stat-solved">${ws.solved} solved</span>
           <span>${ws.rate}% rate</span>
         </div>
+        ${ws.total ? `<div class="ws-card-bar">${
+          ws.solved ? `<div class="ws-bar-seg" style="flex:${ws.solved};background:var(--green)"></div>` : ''}${
+          ws.failed ? `<div class="ws-bar-seg" style="flex:${ws.failed};background:var(--red)"></div>` : ''}${
+          ws.in_progress ? `<div class="ws-bar-seg" style="flex:${ws.in_progress};background:var(--yellow)"></div>` : ''}${
+          (ws.total - ws.solved - ws.failed - ws.in_progress) > 0 ? `<div class="ws-bar-seg" style="flex:${ws.total - ws.solved - ws.failed - ws.in_progress};background:rgba(255,255,255,.08)"></div>` : ''
+        }</div>` : ''}
       </div>
-      <div class="ws-card-cats">${catPills}</div>
-      ${ws.total > 0 ? `
-      <div class="ws-card-bar">
-        <div class="ws-bar-seg" style="width:${solvedW}%;background:var(--green)"></div>
-        <div class="ws-bar-seg" style="width:${failedW}%;background:var(--red)"></div>
-        <div class="ws-bar-seg" style="width:${ipW}%;background:var(--t3)"></div>
-      </div>` : ''}
+      ${pieHtml}
       <svg class="ws-card-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
     `;
     section.appendChild(card);
@@ -85,7 +127,7 @@ export function renderWorkspaces(workspaces) {
         row.innerHTML = `
           ${statusIcon ? `<div class="history-icon ${statusClass}">${statusIcon}</div>` : '<div class="history-icon-spacer"></div>'}
           <div class="history-title">${esc(p.title)}</div>
-          <span class="history-cat">${esc(p.category)}</span>
+          ${(p.tags || [])[0] ? `<span class="history-tag">${esc(p.tags[0])}</span>` : ''}
           <span class="history-diff diff-${p.difficulty}">${esc(p.difficulty)}</span>
           <button class="history-btn history-clear" title="Clear solution and retry">Clear</button>
         `;
@@ -107,7 +149,26 @@ export function renderWorkspaces(workspaces) {
         <div class="history-title" style="color:var(--t3)">New problem</div>
       `;
       newRow.addEventListener('click', () => {
-        send({ type: 'select_workspace', slug: ws.slug });
+        const existing = list.querySelector('.new-problem-prompt');
+        if (existing) { existing.remove(); return; }
+        const promptRow = document.createElement('div');
+        promptRow.className = 'history-row new-problem-prompt';
+        promptRow.innerHTML = `
+          <input type="text" class="new-problem-input" placeholder="e.g. &quot;tree problem&quot; or leave blank for auto" autofocus>
+          <button class="new-problem-go">Go</button>
+        `;
+        promptRow.addEventListener('click', e => e.stopPropagation());
+        const input = promptRow.querySelector('input');
+        const go = promptRow.querySelector('.new-problem-go');
+        const submit = () => {
+          const prompt = input.value.trim();
+          showLoading('Generating problem...', true);
+          send({ type: 'select_workspace', slug: ws.slug, new_problem: true, prompt });
+        };
+        go.addEventListener('click', submit);
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+        newRow.after(promptRow);
+        input.focus();
       });
       list.appendChild(newRow);
 

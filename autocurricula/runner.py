@@ -58,7 +58,7 @@ def run_tests(problem_dir: str | Path, hidden: bool = False) -> TestResult:
     sandbox_python = _get_sandbox_python()
 
     result = subprocess.run(
-        [sandbox_python, "-m", "pytest", str(test_path), "-v", "--tb=short", "--no-header"],
+        [sandbox_python, "-m", "pytest", str(test_path), "-vv", "--tb=short", "--no-header"],
         capture_output=True,
         text=True,
         cwd=str(problem_dir),

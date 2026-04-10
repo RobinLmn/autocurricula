@@ -30,6 +30,8 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         self._initial_role = role
         self._pooled_problem: tuple[ProblemMeta, Path] | None = None
         self._pool_task: asyncio.Task | None = None
+        self._generate_cancelled = False
+        self._generate_task: asyncio.Task | None = None
 
     async def send(self, msg: dict) -> None:
         try:
@@ -78,6 +80,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
             in_prog = sum(1 for p in problems if p.status == ProblemStatus.IN_PROGRESS)
             total = len(problems)
             by_cat: dict[str, dict] = {}
+            by_tag: dict[str, int] = {}
             for p in problems:
                 cat = p.category
                 if cat not in by_cat:
@@ -85,6 +88,8 @@ class SessionHandler(HandlersMixin, CommandsMixin):
                 by_cat[cat]["total"] += 1
                 if p.status == ProblemStatus.SOLVED:
                     by_cat[cat]["solved"] += 1
+                for tag in p.tags:
+                    by_tag[tag] = by_tag.get(tag, 0) + 1
             history = sorted(problems, key=lambda p: p.created_at, reverse=True)
             history_items = [
                 {
@@ -95,6 +100,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
                     "format": p.format,
                     "status": p.status.value,
                     "attempts": p.attempts,
+                    "tags": p.tags,
                 }
                 for p in history
             ]
@@ -108,6 +114,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
                     "in_progress": in_prog,
                     "rate": round((solved / total * 100), 1) if total else 0,
                     "categories": by_cat,
+                    "tags": by_tag,
                     "history": history_items,
                 }
             )
@@ -210,14 +217,13 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         try:
             meta, problem_dir = await asyncio.to_thread(self.session.start_problem, False)
             self._pooled_problem = (meta, problem_dir)
-            print(f"[pool] Pre-generated: {meta.title}")
-        except Exception as e:
-            print(f"[pool] Failed to pre-generate: {e}")
+        except Exception:
             self._pooled_problem = None
 
-    async def _generate_next(self) -> None:
+    async def _generate_next(self, prompt: str = "") -> None:
         assert self.session is not None
-        replay_id = self.session.pick_replay_or_new()
+        self._generate_cancelled = False
+        replay_id = self.session.pick_replay_or_new() if not prompt else None
         if replay_id:
             meta, problem_dir = await asyncio.to_thread(self.session.replay_problem, replay_id)
             if meta and problem_dir:
@@ -228,43 +234,49 @@ class SessionHandler(HandlersMixin, CommandsMixin):
                 self._start_pool()
                 return
 
-        pool_ready = self._pooled_problem is not None
-        pool_running = self._pool_task and not self._pool_task.done()
-        print(f"[pool] State: ready={pool_ready}, generating={pool_running}")
+        if not prompt:
+            pool_ready = self._pooled_problem is not None
+            pool_running = self._pool_task and not self._pool_task.done()
 
-        if not pool_ready and pool_running:
-            print("[pool] Waiting for in-flight pool...")
-            await self.set_busy(True)
-            await self.send({"type": "generating"})
-            await self.send_log('<span class="dim">Loading next problem...</span>')
-            try:
-                if self._pool_task is not None:
-                    await self._pool_task
-            except Exception:
-                pass
-            finally:
-                await self.set_busy(False)
+            if not pool_ready and pool_running:
+                await self.send({"type": "generating"})
+                await self.send_log('<span class="dim">Loading next problem...</span>')
+                try:
+                    if self._pool_task is not None:
+                        await self._pool_task
+                except Exception:
+                    pass
 
-        if self._pooled_problem is not None:
-            meta, problem_dir = self._pooled_problem
-            self._pooled_problem = None
-            state = self.session._load_state()
-            state.current_problem_id = meta.id
-            self.session._save_state(state)
-            self.current_problem = meta
-            self.current_problem_dir = problem_dir
-            payload = self._problem_payload(meta, problem_dir)
-            await self.send({"type": "problem_loaded", "problem": payload})
-            await self.send({"type": "clear_log"})
-            self._start_pool()
-            return
+            if self._generate_cancelled:
+                return
 
-        await self.set_busy(True)
+            if self._pooled_problem is not None:
+                meta, problem_dir = self._pooled_problem
+                self._pooled_problem = None
+                if self._generate_cancelled:
+                    if self.session is not None:
+                        self.session.delete_problem(meta.id)
+                    return
+                state = self.session._load_state()
+                state.current_problem_id = meta.id
+                self.session._save_state(state)
+                self.current_problem = meta
+                self.current_problem_dir = problem_dir
+                payload = self._problem_payload(meta, problem_dir)
+                await self.send({"type": "problem_loaded", "problem": payload})
+                await self.send({"type": "clear_log"})
+                self._start_pool()
+                return
+
         await self.send({"type": "generating"})
         await self.send({"type": "clear_log"})
         await self.send_log('<span class="dim">Generating and validating problem...</span>')
         try:
-            next_meta, next_problem_dir = await asyncio.to_thread(self.session.start_problem)
+            next_meta, next_problem_dir = await asyncio.to_thread(self.session.start_problem, user_prompt=prompt)
+            if self._generate_cancelled:
+                if self.session is not None:
+                    self.session.delete_problem(next_meta.id)
+                return
             self.current_problem = next_meta
             self.current_problem_dir = next_problem_dir
             payload = self._problem_payload(next_meta, next_problem_dir)
@@ -272,6 +284,5 @@ class SessionHandler(HandlersMixin, CommandsMixin):
             await self.send({"type": "clear_log"})
             self._start_pool()
         except Exception as e:
-            await self.send_log(f'<span class="c-error">Error: {e}</span>')
-        finally:
-            await self.set_busy(False)
+            if not self._generate_cancelled:
+                await self.send_log(f'<span class="c-error">Error: {e}</span>')

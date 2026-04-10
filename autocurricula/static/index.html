@@ -95,11 +95,11 @@
                     Skip
                 </button>
                 <span class="toolbar-sep"></span>
-                <button class="tool-btn" id="btn-autocomplete" title="Toggle autocomplete">
+                <button class="tool-btn" id="btn-autocomplete" data-tip="Toggle autocomplete">
                     <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 3l4 4-4 4M6 9h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     <span id="autocomplete-label">AC</span>
                 </button>
-                <button class="tool-btn" id="btn-pomodoro" title="Start pomodoro timer (25 min)">
+                <button class="tool-btn" id="btn-pomodoro" data-tip="Start pomodoro timer">
                     <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="6" r="4.5" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 3.5v3l2 1.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 1.5h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
                     <span id="pomodoro-label"></span>
                 </button>
@@ -229,6 +229,7 @@
     <div id="loading-content">
         <div class="spinner"></div>
         <p id="loading-label">Generating problem...</p>
+        <button id="loading-cancel" class="ghost-btn hidden">Cancel</button>
     </div>
 </div>
 

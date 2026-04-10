@@ -2,7 +2,7 @@ import { $, state, pendingRequests, hideLoading, showLoading } from './state.js'
 import { send } from './websocket.js';
 import { initMonaco } from './editor.js';
 import { showClaudeError, renderWorkspaces } from './landing.js';
-import { loadProblem, appendOutput, appendChat, showRatingPrompt, showNextButton, renderTestResults } from './problem.js';
+import { loadProblem, appendOutput, appendChat, promoteQueuedMessages, showRatingPrompt, showNextButton, renderTestResults } from './problem.js';
 import { switchSidebarTab, switchBottomTab, setButtonsDisabled, showProblemsModal, showProgressModal, showConfirmModal } from './ui.js';
 
 export function showView(name) {
@@ -57,15 +57,17 @@ export const handlers = {
   },
 
   chat_busy(msg) {
+    state.chatBusy = msg.busy;
     $('#typing-indicator').classList.toggle('hidden', !msg.busy);
     if (msg.busy) {
+      promoteQueuedMessages();
       switchSidebarTab('chat-pane');
       const s = $('#chat-scroll');
       requestAnimationFrame(() => { s.scrollTop = s.scrollHeight; });
     }
   },
 
-  generating() { showLoading('Generating problem...'); },
+  generating() { showLoading('Generating problem...', true); },
 
   test_results(msg) { renderTestResults(msg); switchBottomTab('tests-panel'); },
 
@@ -89,8 +91,8 @@ export const handlers = {
   },
 
   verdict(msg) {
-    const label = msg.decision === 'solved' ? 'Solved!' :
-                  msg.decision === 'retry' ? 'Not quite' : 'Moving on';
+    const labels = { solved: 'Solved!', follow_up: 'Follow-up', retry: 'Not quite', move_on: 'Moving on' };
+    const label = labels[msg.decision] || 'Review';
     appendChat('claude', `**${label}**\n\n${msg.feedback}`, false);
     switchSidebarTab('chat-pane');
 

@@ -52,6 +52,7 @@ class GeneratedContent(BaseModel):
     category: str
     difficulty: str
     format: str  # "python" or "markdown"
+    tags: list[str] = Field(default_factory=list)
     question: str
     theory: str
     solution_template: str

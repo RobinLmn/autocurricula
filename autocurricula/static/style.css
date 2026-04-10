@@ -186,14 +186,51 @@ html, body {
     display: flex;
     gap: 2px;
     height: 3px;
-    width: 80px;
-    flex-shrink: 0;
+    width: 50%;
+    margin-top: 6px;
+    border-radius: 2px;
+    overflow: hidden;
 }
 
 .ws-bar-seg {
     height: 100%;
     border-radius: 1.5px;
     min-width: 2px;
+}
+
+.ws-pie-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.ws-pie { flex-shrink: 0; }
+
+.pie-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: 120px;
+}
+
+.pie-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--t2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pie-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
 }
 
 .ws-section { margin-bottom: 24px; }
@@ -227,6 +264,36 @@ html, body {
 .history-row { cursor: pointer; }
 .history-row:hover { background: rgba(255,255,255,.025); }
 
+.new-problem-prompt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 6px 36px;
+    cursor: default;
+}
+.new-problem-prompt:hover { background: transparent; }
+.new-problem-input {
+    flex: 1;
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    padding: 5px 10px;
+    font: 12px var(--sans);
+    color: var(--t1);
+    outline: none;
+}
+.new-problem-input:focus { border-color: var(--accent); }
+.new-problem-go {
+    padding: 4px 12px;
+    font: 450 11px var(--sans);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    background: rgba(255,255,255,.06);
+    color: var(--t2);
+    cursor: pointer;
+}
+.new-problem-go:hover { background: rgba(255,255,255,.1); color: var(--t1); }
+
 .history-icon { flex-shrink: 0; display: flex; width: 12px; }
 .history-icon.solved { color: var(--green); }
 .history-icon.failed { color: var(--red); }
@@ -248,6 +315,20 @@ html, body {
     color: var(--t3);
     text-transform: capitalize;
     flex-shrink: 0;
+}
+
+.history-tags {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.history-tag {
+    font-size: 9.5px;
+    padding: 1px 6px;
+    border-radius: 100px;
+    background: rgba(255,255,255,.06);
+    color: var(--t3);
 }
 
 .history-diff {
@@ -508,6 +589,7 @@ html, body {
 .toolbar-actions { display: flex; gap: 4px; align-items: center; }
 
 .tool-btn {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -520,6 +602,22 @@ html, body {
     cursor: pointer;
     transition: all .1s;
     white-space: nowrap;
+}
+.tool-btn[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    background: var(--s4);
+    color: var(--t1);
+    font: 400 10.5px var(--sans);
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 100;
+    animation: fadeIn .1s ease;
 }
 .toolbar-sep {
     width: 1px;
@@ -741,6 +839,18 @@ html, body {
 .test-detail.collapsed {
     display: none;
 }
+.detail-label {
+    font-weight: 600;
+}
+.detail-label.detail-expected {
+    color: var(--green);
+}
+.detail-label.detail-got {
+    color: var(--red);
+}
+.detail-label.detail-assertion {
+    color: var(--yellow);
+}
 
 #chat-pane {
     padding: 0;
@@ -773,6 +883,7 @@ html, body {
     border-bottom-right-radius: 4px;
 }
 .chat-msg .msg-label { display: none; }
+.chat-msg.queued { opacity: 0.4; }
 .chat-msg.claude-msg {
     align-self: flex-start;
     color: var(--t2);
@@ -1210,6 +1321,11 @@ html, body {
     letter-spacing: -.005em;
 }
 
+#loading-cancel {
+    margin-top: 4px;
+    font-size: 12px;
+}
+
 .spinner {
     width: 24px;
     height: 24px;
@@ -1221,6 +1337,41 @@ html, body {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+#disconnected-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn .2s ease;
+}
+
+#disconnected-content {
+    text-align: center;
+}
+
+#disconnected-label {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--t2);
+    margin-bottom: 8px;
+}
+
+#disconnected-hint {
+    font-size: 13px;
+    color: var(--t3);
+}
+
+#disconnected-hint code {
+    font: 12px var(--mono);
+    padding: 2px 6px;
+    background: rgba(255,255,255,.06);
+    border-radius: 4px;
+    color: var(--t2);
 }
 
 /* ═══════════════════════════════════════════════════════════
