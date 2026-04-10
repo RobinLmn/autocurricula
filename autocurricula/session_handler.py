@@ -221,7 +221,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
 
         def _label(step: str) -> str:
             if step in ("generating", "generating_tokens"):
-                return "Generating problem..."
+                return "Generating a problem..."
             if step == "generated":
                 return "Validating solution..."
             if step == "validating":

@@ -179,7 +179,7 @@ export function renderWorkspaces(workspaces) {
         const go = promptRow.querySelector('.new-problem-go');
         const submit = () => {
           const prompt = input.value.trim();
-          showLoading('Generating problem...', true);
+          showLoading('Generating a problem...', true);
           send({ type: 'select_workspace', slug: ws.slug, new_problem: true, prompt });
         };
         go.addEventListener('click', submit);

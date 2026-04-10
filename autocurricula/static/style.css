@@ -1329,6 +1329,12 @@ html, body {
     letter-spacing: -.005em;
 }
 
+#loading-hint {
+    font-size: 11px;
+    color: var(--t4);
+    margin: -12px 0 0;
+}
+
 #loading-tokens {
     font-size: 11px;
     color: var(--t4);

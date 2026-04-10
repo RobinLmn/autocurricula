@@ -58,6 +58,7 @@ function formatTokens(n) {
 
 export function showLoading(label, cancellable = false) {
   $('#loading-label').textContent = label || 'Loading...';
+  $('#loading-hint').classList.toggle('hidden', !cancellable);
   $('#loading-tokens').classList.add('hidden');
   $('#loading-tokens').textContent = '';
   $('#loading-cancel').classList.toggle('hidden', !cancellable);
@@ -74,6 +75,7 @@ export function hideLoading() {
   _stopTimer();
   $('#loading-overlay').classList.add('hidden');
   $('#loading-cancel').classList.add('hidden');
+  $('#loading-hint').classList.add('hidden');
   $('#loading-tokens').classList.add('hidden');
   $('#loading-tokens').textContent = '';
 }

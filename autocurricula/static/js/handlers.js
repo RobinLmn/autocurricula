@@ -28,7 +28,7 @@ export const handlers = {
       hideLoading();
       loadProblem(msg.problem);
     } else {
-      showLoading('Generating problem...');
+      showLoading('Generating a problem...');
     }
   },
 
@@ -68,7 +68,7 @@ export const handlers = {
     }
   },
 
-  generating() { showLoading('Generating problem...', true); },
+  generating() { showLoading('Generating a problem...', true); },
   generating_progress(msg) { updateLoadingProgress(msg.step, msg); },
 
   test_results(msg) { renderTestResults(msg); switchBottomTab('tests-panel'); },
