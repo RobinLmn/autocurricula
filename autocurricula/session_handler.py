@@ -249,7 +249,11 @@ class SessionHandler(HandlersMixin, CommandsMixin):
         if self.session is None:
             return
         try:
-            meta, problem_dir = await asyncio.to_thread(self.session.start_problem, False)
+            loop = asyncio.get_event_loop()
+            on_progress, _ = self._make_progress_callback(loop)
+            meta, problem_dir = await asyncio.to_thread(
+                self.session.start_problem, False, on_progress=on_progress
+            )
             self._pooled_problem = (meta, problem_dir)
         except Exception:
             self._pooled_problem = None
