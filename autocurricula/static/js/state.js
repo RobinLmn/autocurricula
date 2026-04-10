@@ -21,19 +21,34 @@ export function esc(s) {
   return d.innerHTML;
 }
 
-export function showLoading(label, cancellable = false) {
-  $('#loading-label').textContent = label || 'Loading...';
-  $('#loading-tokens').classList.add('hidden');
-  $('#loading-tokens').textContent = '';
-  $('#loading-cancel').classList.toggle('hidden', !cancellable);
-  $('#loading-overlay').classList.remove('hidden');
+let _timerInterval = null;
+let _timerStart = 0;
+let _lastStep = '';
+let _hasTokens = false;
+
+function _startTimer() {
+  _stopTimer();
+  _timerStart = Date.now();
+  _hasTokens = false;
+  _updateTimerDisplay();
+  _timerInterval = setInterval(_updateTimerDisplay, 1000);
 }
 
-export function hideLoading() {
-  $('#loading-overlay').classList.add('hidden');
-  $('#loading-cancel').classList.add('hidden');
-  $('#loading-tokens').classList.add('hidden');
-  $('#loading-tokens').textContent = '';
+function _stopTimer() {
+  if (_timerInterval) {
+    clearInterval(_timerInterval);
+    _timerInterval = null;
+  }
+}
+
+function _updateTimerDisplay() {
+  if (_hasTokens) return;
+  const el = $('#loading-tokens');
+  const elapsed = Math.floor((Date.now() - _timerStart) / 1000);
+  if (elapsed >= 1) {
+    el.textContent = `${elapsed}s`;
+    el.classList.remove('hidden');
+  }
 }
 
 function formatTokens(n) {
@@ -41,12 +56,38 @@ function formatTokens(n) {
   return String(n);
 }
 
+export function showLoading(label, cancellable = false) {
+  $('#loading-label').textContent = label || 'Loading...';
+  $('#loading-tokens').classList.add('hidden');
+  $('#loading-tokens').textContent = '';
+  $('#loading-cancel').classList.toggle('hidden', !cancellable);
+  $('#loading-overlay').classList.remove('hidden');
+  _lastStep = '';
+  if (cancellable) {
+    _startTimer();
+  } else {
+    _stopTimer();
+  }
+}
+
+export function hideLoading() {
+  _stopTimer();
+  $('#loading-overlay').classList.add('hidden');
+  $('#loading-cancel').classList.add('hidden');
+  $('#loading-tokens').classList.add('hidden');
+  $('#loading-tokens').textContent = '';
+}
+
 export function updateLoadingProgress(step, data) {
   $('#loading-label').textContent = step;
   if (data.total_tokens > 0) {
+    _hasTokens = true;
+    const elapsed = Math.floor((Date.now() - _timerStart) / 1000);
     const parts = [`${formatTokens(data.total_tokens)} tokens`];
     if (data.cost_usd > 0) parts.push(`$${data.cost_usd.toFixed(3)}`);
-    $('#loading-tokens').textContent = parts.join(' · ');
+    if (elapsed >= 1) parts.push(`${elapsed}s`);
+    $('#loading-tokens').textContent = parts.join(' \u00b7 ');
     $('#loading-tokens').classList.remove('hidden');
   }
+  _lastStep = step;
 }
