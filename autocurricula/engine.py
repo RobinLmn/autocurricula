@@ -19,7 +19,7 @@ class ClaudeUsage:
     cost_usd: float = 0.0
 
     @classmethod
-    def from_json(cls, data: dict) -> "ClaudeUsage":
+    def from_json(cls, data: dict) -> ClaudeUsage:
         usage = data.get("usage", {})
         return cls(
             input_tokens=usage.get("input_tokens", 0),
