@@ -116,19 +116,54 @@ def get_usage_last_24h() -> dict:
     }
 
 
-def _call_claude(prompt: str) -> tuple[str, ClaudeUsage]:
-    result = subprocess.run(
-        ["claude", "-p", "--output-format", "json", prompt],
-        capture_output=True,
+def _call_claude(
+    prompt: str,
+    on_progress: ProgressCallback = None,
+    step: str = "",
+) -> tuple[str, ClaudeUsage]:
+    """Call Claude CLI with streaming to get real-time token updates.
+
+    When on_progress is provided, fires a '{step}_tokens' callback as soon as
+    the assistant event arrives (before the final result).
+    """
+    proc = subprocess.Popen(
+        ["claude", "-p", "--verbose", "--output-format", "stream-json", prompt],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=120,
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"Claude call failed: {result.stderr}")
-    data = json.loads(result.stdout)
-    usage = ClaudeUsage.from_json(data)
+    usage = ClaudeUsage()
+    text = ""
+    try:
+        for line in proc.stdout:  # type: ignore[union-attr]
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            etype = event.get("type", "")
+            if etype == "assistant" and on_progress and step:
+                # Token counts available as soon as model finishes generating
+                msg = event.get("message", {})
+                msg_usage = msg.get("usage", {})
+                early = ClaudeUsage(
+                    input_tokens=msg_usage.get("input_tokens", 0),
+                    output_tokens=msg_usage.get("output_tokens", 0),
+                    cache_read_input_tokens=msg_usage.get("cache_read_input_tokens", 0),
+                )
+                on_progress(f"{step}_tokens", early.to_dict())
+            elif etype == "result":
+                usage = ClaudeUsage.from_json(event)
+                text = event.get("result", "").strip()
+    except Exception:
+        pass
+    proc.wait(timeout=120)
+    if proc.returncode != 0:
+        stderr = proc.stderr.read() if proc.stderr else ""  # type: ignore[union-attr]
+        raise RuntimeError(f"Claude call failed: {stderr}")
     _log_usage(usage)
-    text = data.get("result", "").strip()
     return text, usage
 
 
@@ -300,7 +335,7 @@ Incorporate this into your problem choice while still following all the rules ab
 
     if on_progress:
         on_progress("generating", {})
-    raw, usage = _call_claude(prompt)
+    raw, usage = _call_claude(prompt, on_progress=on_progress, step="generating")
     if on_progress:
         on_progress("generated", usage.to_dict())
     data = _extract_json(raw)
@@ -332,7 +367,7 @@ Make sure the reference_solution actually passes all tests."""
 
     if on_progress:
         on_progress("fixing", {})
-    raw, usage = _call_claude(prompt)
+    raw, usage = _call_claude(prompt, on_progress=on_progress, step="fixing")
     if on_progress:
         on_progress("fixed", usage.to_dict())
     data = _extract_json(raw)

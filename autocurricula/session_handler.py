@@ -216,29 +216,44 @@ class SessionHandler(HandlersMixin, CommandsMixin):
     def _make_progress_callback(self, loop: asyncio.AbstractEventLoop) -> tuple:
         """Create a progress callback and tracker for use from sync threads."""
         progress = GenerationProgress()
+        # Track streamed preview so we can subtract it when the final result arrives
+        preview = GenerationProgress()
 
-        def _label(step: str, data: dict) -> str:
-            if step == "generating":
+        def _label(step: str) -> str:
+            if step in ("generating", "generating_tokens"):
                 return "Generating problem..."
             if step == "generated":
                 return "Validating solution..."
             if step == "validating":
-                attempt = data.get("attempt", 1)
-                if attempt > 1:
-                    return f"Validating solution (attempt {attempt})..."
                 return "Validating solution..."
-            if step == "fixing":
+            if step in ("fixing", "fixing_tokens"):
                 return "Fixing problem..."
             if step == "fixed":
                 return "Validating solution..."
             return step
 
         def on_progress(step: str, data: dict) -> None:
-            if step in ("generated", "fixed"):
+            label = _label(step)
+            if step == "validating":
+                attempt = data.get("attempt", 1)
+                if attempt > 1:
+                    label = f"Validating solution (attempt {attempt})..."
+            if step.endswith("_tokens"):
+                # Early streamed token count from assistant event
+                preview.add_usage(data)
+                progress.add_usage(data)
+            elif step in ("generated", "fixed"):
+                # Final usage — replace preview with actual
+                progress.total_input_tokens -= preview.total_input_tokens
+                progress.total_output_tokens -= preview.total_output_tokens
+                progress.total_cost_usd -= preview.total_cost_usd
+                preview.total_input_tokens = 0
+                preview.total_output_tokens = 0
+                preview.total_cost_usd = 0.0
                 progress.add_usage(data)
             msg = {
                 "type": "generating_progress",
-                "step": _label(step, data),
+                "step": label,
                 **progress.to_dict(),
             }
             asyncio.run_coroutine_threadsafe(self.send(msg), loop)
