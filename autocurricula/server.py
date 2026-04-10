@@ -144,6 +144,32 @@ def run_server(role: str | None = None, port: int = 8420) -> None:
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 
 
+def _check_for_update() -> None:
+    """Check PyPI for a newer version and offer to upgrade."""
+    import subprocess
+    import sys
+    from importlib.metadata import version as pkg_version
+    from urllib.request import urlopen
+
+    try:
+        current = pkg_version("autocurricula")
+        with urlopen("https://pypi.org/pypi/autocurricula/json", timeout=3) as resp:
+            import json
+
+            latest = json.loads(resp.read())["info"]["version"]
+        from packaging.version import Version
+
+        if Version(current) >= Version(latest):
+            return
+        answer = input(f"Update available: {current} → {latest}. Update now? [y/N] ").strip().lower()
+        if answer in ("y", "yes"):
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "autocurricula"])
+            print(f"Updated to {latest}. Please re-run autocurricula.")
+            sys.exit(0)
+    except Exception:
+        pass
+
+
 def main() -> None:
     import argparse
 
@@ -151,4 +177,5 @@ def main() -> None:
     parser.add_argument("-p", "--port", type=int, default=8420, help="Port for web server (default: 8420)")
     args = parser.parse_args()
 
+    _check_for_update()
     run_server(port=args.port)
