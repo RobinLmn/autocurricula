@@ -39,13 +39,30 @@ function renderPieChart(tags, size = 80) {
   });
 
   const legend = entries.slice(0, 6).map(([tag], i) =>
-    `<span class="pie-legend-item"><span class="pie-dot" style="background:${TAG_COLORS[i % TAG_COLORS.length]}"></span>${esc(tag)}</span>`
+    `<span class="pie-legend-item">${esc(tag)}<span class="pie-dot" style="background:${TAG_COLORS[i % TAG_COLORS.length]}"></span></span>`
   ).join('');
 
   return `<div class="ws-pie-wrap">
-    <svg class="ws-pie" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>
     <div class="pie-legend">${legend}</div>
+    <svg class="ws-pie" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>
   </div>`;
+}
+
+function formatTokens(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return String(n);
+}
+
+export function renderUsage24h(usage) {
+  const el = $('#landing-usage');
+  if (!el) return;
+  if (!usage || usage.total_tokens === 0) {
+    el.classList.add('hidden');
+    return;
+  }
+  el.textContent = `${formatTokens(usage.total_tokens)} tokens in the last 24h`;
+  el.classList.remove('hidden');
 }
 
 export function showClaudeError(error) {
@@ -162,7 +179,7 @@ export function renderWorkspaces(workspaces) {
         const go = promptRow.querySelector('.new-problem-go');
         const submit = () => {
           const prompt = input.value.trim();
-          showLoading('Generating problem...', true);
+          showLoading('Generating a problem...', true);
           send({ type: 'select_workspace', slug: ws.slug, new_problem: true, prompt });
         };
         go.addEventListener('click', submit);

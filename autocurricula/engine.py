@@ -3,21 +3,170 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .models import GeneratedContent, GeneratedDerivation, GeneratedProblem, SubmissionVerdict
 
 
-def _call_claude(prompt: str) -> str:
-    result = subprocess.run(
-        ["claude", "-p", "--output-format", "text", prompt],
-        capture_output=True,
+@dataclass
+class ClaudeUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cost_usd: float = 0.0
+
+    @classmethod
+    def from_json(cls, data: dict) -> ClaudeUsage:
+        usage = data.get("usage", {})
+        return cls(
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
+            cost_usd=data.get("total_cost_usd", 0.0),
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "input_tokens": self.input_tokens + self.cache_read_input_tokens,
+            "output_tokens": self.output_tokens,
+            "cost_usd": self.cost_usd,
+        }
+
+
+@dataclass
+class GenerationProgress:
+    """Accumulates token usage across multiple Claude calls during generation."""
+
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cost_usd: float = 0.0
+
+    def add_usage(self, data: dict) -> None:
+        """Add usage from a to_dict()-style dict (with input_tokens, output_tokens, cost_usd)."""
+        self.total_input_tokens += data.get("input_tokens", 0)
+        self.total_output_tokens += data.get("output_tokens", 0)
+        self.total_cost_usd += data.get("cost_usd", 0.0)
+
+    @property
+    def total_tokens(self) -> int:
+        return self.total_input_tokens + self.total_output_tokens
+
+    def to_dict(self) -> dict:
+        return {
+            "input_tokens": self.total_input_tokens,
+            "output_tokens": self.total_output_tokens,
+            "total_tokens": self.total_tokens,
+            "cost_usd": round(self.total_cost_usd, 4),
+        }
+
+
+_USAGE_LOG: Path | None = None
+
+
+def _get_usage_log() -> Path:
+    global _USAGE_LOG
+    if _USAGE_LOG is None:
+        from .workspace import DATA_DIR
+
+        _USAGE_LOG = DATA_DIR / "token_usage.jsonl"
+    return _USAGE_LOG
+
+
+def _log_usage(usage: ClaudeUsage) -> None:
+    """Append a usage record to the global JSONL log."""
+    path = _get_usage_log()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "ts": time.time(),
+        "input_tokens": usage.input_tokens + usage.cache_read_input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cost_usd": usage.cost_usd,
+    }
+    with open(path, "a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+def get_usage_last_24h() -> dict:
+    """Return aggregated token usage from the last 24 hours."""
+    path = _get_usage_log()
+    cutoff = time.time() - 86400
+    total_input = 0
+    total_output = 0
+    total_cost = 0.0
+    if path.exists():
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if rec.get("ts", 0) >= cutoff:
+                    total_input += rec.get("input_tokens", 0)
+                    total_output += rec.get("output_tokens", 0)
+                    total_cost += rec.get("cost_usd", 0.0)
+    return {
+        "input_tokens": total_input,
+        "output_tokens": total_output,
+        "total_tokens": total_input + total_output,
+        "cost_usd": round(total_cost, 4),
+    }
+
+
+def _call_claude(
+    prompt: str,
+    on_progress: ProgressCallback = None,
+    step: str = "",
+) -> tuple[str, ClaudeUsage]:
+    """Call Claude CLI with streaming to get real-time token updates.
+
+    When on_progress is provided, fires a '{step}_tokens' callback as soon as
+    the assistant event arrives (before the final result).
+    """
+    proc = subprocess.Popen(
+        ["claude", "-p", "--verbose", "--output-format", "stream-json", prompt],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=120,
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"Claude call failed: {result.stderr}")
-    return result.stdout.strip()
+    usage = ClaudeUsage()
+    text = ""
+    try:
+        for line in proc.stdout:  # type: ignore[union-attr]
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            etype = event.get("type", "")
+            if etype == "assistant" and on_progress and step:
+                # Token counts available as soon as model finishes generating
+                msg = event.get("message", {})
+                msg_usage = msg.get("usage", {})
+                early = ClaudeUsage(
+                    input_tokens=msg_usage.get("input_tokens", 0),
+                    output_tokens=msg_usage.get("output_tokens", 0),
+                    cache_read_input_tokens=msg_usage.get("cache_read_input_tokens", 0),
+                )
+                on_progress(f"{step}_tokens", early.to_dict())
+            elif etype == "result":
+                usage = ClaudeUsage.from_json(event)
+                text = event.get("result", "").strip()
+    except Exception:
+        pass
+    proc.wait(timeout=120)
+    if proc.returncode != 0:
+        stderr = proc.stderr.read() if proc.stderr else ""  # type: ignore[union-attr]
+        raise RuntimeError(f"Claude call failed: {stderr}")
+    _log_usage(usage)
+    return text, usage
 
 
 def name_workspace(user_description: str) -> str:
@@ -34,7 +183,8 @@ Generate a concise role title (2-4 words) that captures this. Examples:
 
 Respond with ONLY the title, nothing else."""
 
-    return _call_claude(prompt)
+    text, _ = _call_claude(prompt)
+    return text
 
 
 def _format_chat_history(history: list[dict]) -> str:
@@ -100,7 +250,8 @@ def chat_with_claude(
     """Chat with Claude about the current problem. Uses session-style prompting:
     rules are set in the first message, history carries them forward."""
     prompt = _build_chat_prompt(message, question, user_code, is_markdown, chat_history or [])
-    return _call_claude(prompt)
+    text, _ = _call_claude(prompt)
+    return text
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -112,11 +263,15 @@ def _extract_json(text: str) -> dict[str, Any]:
     return result
 
 
+ProgressCallback = Any  # Callable[[str, dict], None] | None
+
+
 def generate_next_problem(
     role: str,
     description: str,
     history_summary: str,
     user_prompt: str = "",
+    on_progress: ProgressCallback = None,
 ) -> GeneratedContent:
     """Single Claude call that picks difficulty, format, category, and generates the problem."""
     prompt = f"""You are an autocurricula engine: an adaptive system that generates \
@@ -180,12 +335,20 @@ For python problems:
         prompt += f'\n\nThe student specifically requested: "{user_prompt}". \
 Incorporate this into your problem choice while still following all the rules above.'
 
-    raw = _call_claude(prompt)
+    if on_progress:
+        on_progress("generating", {})
+    raw, usage = _call_claude(prompt, on_progress=on_progress, step="generating")
+    if on_progress:
+        on_progress("generated", usage.to_dict())
     data = _extract_json(raw)
     return GeneratedContent(**data)
 
 
-def fix_problem(generated: GeneratedProblem, test_output: str) -> GeneratedProblem:
+def fix_problem(
+    generated: GeneratedProblem,
+    test_output: str,
+    on_progress: ProgressCallback = None,
+) -> GeneratedProblem:
     """Ask Claude to fix a generated problem whose reference solution fails its own tests."""
     prompt = f"""You generated an interview practice problem, but the reference solution fails the tests. Fix the issue.
 
@@ -204,7 +367,11 @@ Respond ONLY with a corrected JSON block (wrapped in ```json``` markers) contain
 
 Make sure the reference_solution actually passes all tests."""
 
-    raw = _call_claude(prompt)
+    if on_progress:
+        on_progress("fixing", {})
+    raw, usage = _call_claude(prompt, on_progress=on_progress, step="fixing")
+    if on_progress:
+        on_progress("fixed", usage.to_dict())
     data = _extract_json(raw)
     return GeneratedProblem(**data)
 
@@ -269,7 +436,7 @@ that already demonstrate strong understanding can go straight to "solved".
   - If solved with struggle: suggest same level
   - If move_on: suggest easier"""
 
-    raw = _call_claude(prompt)
+    raw, _ = _call_claude(prompt)
     data = _extract_json(raw)
     return SubmissionVerdict(**data)
 
@@ -310,7 +477,7 @@ Respond ONLY with a JSON block (wrapped in ```json``` markers) with these exact 
 
 Make the difficulty EASY relative to the original problem."""
 
-    raw = _call_claude(prompt)
+    raw, _ = _call_claude(prompt)
     data = _extract_json(raw)
     return GeneratedProblem(**data)
 
@@ -368,7 +535,7 @@ Respond ONLY with a JSON block (wrapped in ```json``` markers) with these exact 
 
 - "next_difficulty": suggestion for next problem difficulty ("easy", "medium", "hard", or null if "retry")"""
 
-    raw = _call_claude(prompt)
+    raw, _ = _call_claude(prompt)
     data = _extract_json(raw)
     return SubmissionVerdict(**data)
 
@@ -405,6 +572,6 @@ Respond ONLY with a JSON block (wrapped in ```json``` markers) with these exact 
 
 Make the difficulty EASY relative to the original problem."""
 
-    raw = _call_claude(prompt)
+    raw, _ = _call_claude(prompt)
     data = _extract_json(raw)
     return GeneratedDerivation(**data)

@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .commands import CommandsMixin
+from .engine import GenerationProgress, get_usage_last_24h
 from .handlers import HandlersMixin
 from .models import ProblemMeta, ProblemStatus
 from .progress import load_progress
@@ -143,6 +144,7 @@ class SessionHandler(HandlersMixin, CommandsMixin):
             {
                 "type": "landing",
                 "workspaces": self._get_workspaces_data(),
+                "usage_24h": get_usage_last_24h(),
                 **({"claude_error": claude_error} if claude_error else {}),
             }
         )
@@ -211,11 +213,60 @@ class SessionHandler(HandlersMixin, CommandsMixin):
             return
         self._pool_task = asyncio.create_task(self._pool_generate())
 
+    def _make_progress_callback(self, loop: asyncio.AbstractEventLoop) -> tuple:
+        """Create a progress callback and tracker for use from sync threads."""
+        progress = GenerationProgress()
+        # Track streamed preview so we can subtract it when the final result arrives
+        preview = GenerationProgress()
+
+        def _label(step: str) -> str:
+            if step in ("generating", "generating_tokens"):
+                return "Generating a problem..."
+            if step == "generated":
+                return "Validating solution..."
+            if step == "validating":
+                return "Validating solution..."
+            if step in ("fixing", "fixing_tokens"):
+                return "Fixing problem..."
+            if step == "fixed":
+                return "Validating solution..."
+            return step
+
+        def on_progress(step: str, data: dict) -> None:
+            label = _label(step)
+            if step == "validating":
+                attempt = data.get("attempt", 1)
+                if attempt > 1:
+                    label = f"Validating solution (attempt {attempt})..."
+            if step.endswith("_tokens"):
+                # Early streamed token count from assistant event
+                preview.add_usage(data)
+                progress.add_usage(data)
+            elif step in ("generated", "fixed"):
+                # Final usage — replace preview with actual
+                progress.total_input_tokens -= preview.total_input_tokens
+                progress.total_output_tokens -= preview.total_output_tokens
+                progress.total_cost_usd -= preview.total_cost_usd
+                preview.total_input_tokens = 0
+                preview.total_output_tokens = 0
+                preview.total_cost_usd = 0.0
+                progress.add_usage(data)
+            msg = {
+                "type": "generating_progress",
+                "step": label,
+                **progress.to_dict(),
+            }
+            asyncio.run_coroutine_threadsafe(self.send(msg), loop)
+
+        return on_progress, progress
+
     async def _pool_generate(self) -> None:
         if self.session is None:
             return
         try:
-            meta, problem_dir = await asyncio.to_thread(self.session.start_problem, False)
+            loop = asyncio.get_event_loop()
+            on_progress, _ = self._make_progress_callback(loop)
+            meta, problem_dir = await asyncio.to_thread(self.session.start_problem, False, on_progress=on_progress)
             self._pooled_problem = (meta, problem_dir)
         except Exception:
             self._pooled_problem = None
@@ -270,9 +321,12 @@ class SessionHandler(HandlersMixin, CommandsMixin):
 
         await self.send({"type": "generating"})
         await self.send({"type": "clear_log"})
-        await self.send_log('<span class="dim">Generating and validating problem...</span>')
+        loop = asyncio.get_event_loop()
+        on_progress, progress = self._make_progress_callback(loop)
         try:
-            next_meta, next_problem_dir = await asyncio.to_thread(self.session.start_problem, user_prompt=prompt)
+            next_meta, next_problem_dir = await asyncio.to_thread(
+                self.session.start_problem, user_prompt=prompt, on_progress=on_progress
+            )
             if self._generate_cancelled:
                 if self.session is not None:
                     self.session.delete_problem(next_meta.id)

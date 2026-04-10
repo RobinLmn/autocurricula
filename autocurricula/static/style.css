@@ -92,6 +92,13 @@ html, body {
     letter-spacing: -.005em;
 }
 
+#landing-usage {
+    font-size: 12px;
+    color: var(--t4);
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
+}
+
 #claude-error-banner {
     display: flex;
     align-items: center;
@@ -211,6 +218,7 @@ html, body {
 .pie-legend {
     display: flex;
     flex-direction: column;
+    align-items: flex-end;
     gap: 2px;
     max-width: 120px;
 }
@@ -1319,6 +1327,19 @@ html, body {
     font-weight: 400;
     color: var(--t3);
     letter-spacing: -.005em;
+}
+
+#loading-hint {
+    font-size: 11px;
+    color: var(--t4);
+    margin: -12px 0 0;
+}
+
+#loading-tokens {
+    font-size: 11px;
+    color: var(--t4);
+    margin: -12px 0 0;
+    font-variant-numeric: tabular-nums;
 }
 
 #loading-cancel {

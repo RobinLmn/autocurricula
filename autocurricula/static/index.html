@@ -23,6 +23,7 @@
         <div id="landing-header">
             <h1 id="landing-logo">autocurricula</h1>
             <p id="landing-tagline">Adaptive interview practice, powered by Claude</p>
+            <p id="landing-usage" class="hidden"></p>
         </div>
 
         <div id="workspaces-grid"></div>
@@ -228,7 +229,9 @@
 <div id="loading-overlay" class="hidden">
     <div id="loading-content">
         <div class="spinner"></div>
-        <p id="loading-label">Generating problem...</p>
+        <p id="loading-label">Generating a problem...</p>
+        <p id="loading-hint" class="hidden">This may take a few minutes</p>
+        <p id="loading-tokens" class="hidden"></p>
         <button id="loading-cancel" class="ghost-btn hidden">Cancel</button>
     </div>
 </div>

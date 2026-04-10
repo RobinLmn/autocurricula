@@ -4,7 +4,7 @@ import json
 import random
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Callable, cast
 from uuid import uuid4
 
 from .engine import (
@@ -101,6 +101,7 @@ class Session:
         generated: GeneratedProblem,
         meta: ProblemMeta,
         max_attempts: int = 3,
+        on_progress: Callable[[str, dict], None] | None = None,
     ) -> GeneratedProblem:
         """Validate a generated problem by running the reference solution against the tests.
 
@@ -109,6 +110,8 @@ class Session:
         d = self._problem_dir(problem_id)
 
         for attempt in range(max_attempts):
+            if on_progress:
+                on_progress("validating", {"attempt": attempt + 1, "max_attempts": max_attempts})
             # Write reference solution as solution.py for test execution
             d.mkdir(parents=True, exist_ok=True)
             (d / "tests_open.py").write_text(generated.tests_open)
@@ -117,12 +120,14 @@ class Session:
 
             open_result = run_tests(str(d), hidden=False)
             if not open_result.passed:
-                generated = fix_problem(generated, f"Open tests failed:\n{open_result.output}")
+                generated = fix_problem(generated, f"Open tests failed:\n{open_result.output}", on_progress=on_progress)
                 continue
 
             hidden_result = run_tests(str(d), hidden=True)
             if not hidden_result.passed:
-                generated = fix_problem(generated, f"Hidden tests failed:\n{hidden_result.output}")
+                generated = fix_problem(
+                    generated, f"Hidden tests failed:\n{hidden_result.output}", on_progress=on_progress
+                )
                 continue
 
             # All tests pass
@@ -161,6 +166,7 @@ class Session:
         self,
         set_current: bool = True,
         user_prompt: str = "",
+        on_progress: Callable[[str, dict], None] | None = None,
     ) -> tuple[ProblemMeta, Path]:
         state = self._load_state()
         state.current_role = self.role
@@ -169,7 +175,9 @@ class Session:
         summary = history_summary(state, self.role)
         description = get_description(self.workspace_dir) or self.role
 
-        generated = generate_next_problem(self.role, description, summary, user_prompt=user_prompt)
+        generated = generate_next_problem(
+            self.role, description, summary, user_prompt=user_prompt, on_progress=on_progress
+        )
 
         if generated.difficulty in ("easy", "medium", "hard"):
             difficulty = Difficulty(generated.difficulty)
@@ -208,7 +216,7 @@ class Session:
                 solution_template=generated.solution_template,
                 reference_solution=generated.reference_solution,
             )
-            prob = self._validate_problem(problem_id, prob, meta)
+            prob = self._validate_problem(problem_id, prob, meta, on_progress=on_progress)
             self._write_problem_files(problem_id, prob, meta)
 
         state.problems[problem_id] = meta
