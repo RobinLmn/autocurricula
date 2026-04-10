@@ -1,4 +1,4 @@
-import { $, state, pendingRequests, hideLoading, showLoading } from './state.js';
+import { $, state, pendingRequests, hideLoading, showLoading, updateLoadingProgress } from './state.js';
 import { send } from './websocket.js';
 import { initMonaco } from './editor.js';
 import { showClaudeError, renderWorkspaces } from './landing.js';
@@ -68,6 +68,7 @@ export const handlers = {
   },
 
   generating() { showLoading('Generating problem...', true); },
+  generating_progress(msg) { updateLoadingProgress(msg.step, msg); },
 
   test_results(msg) { renderTestResults(msg); switchBottomTab('tests-panel'); },
 

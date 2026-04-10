@@ -3,21 +3,76 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from dataclasses import dataclass
 from typing import Any
 
 from .models import GeneratedContent, GeneratedDerivation, GeneratedProblem, SubmissionVerdict
 
 
-def _call_claude(prompt: str) -> str:
+@dataclass
+class ClaudeUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cost_usd: float = 0.0
+
+    @classmethod
+    def from_json(cls, data: dict) -> "ClaudeUsage":
+        usage = data.get("usage", {})
+        return cls(
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
+            cost_usd=data.get("total_cost_usd", 0.0),
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "input_tokens": self.input_tokens + self.cache_read_input_tokens,
+            "output_tokens": self.output_tokens,
+            "cost_usd": self.cost_usd,
+        }
+
+
+@dataclass
+class GenerationProgress:
+    """Accumulates token usage across multiple Claude calls during generation."""
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cost_usd: float = 0.0
+
+    def add_usage(self, data: dict) -> None:
+        """Add usage from a to_dict()-style dict (with input_tokens, output_tokens, cost_usd)."""
+        self.total_input_tokens += data.get("input_tokens", 0)
+        self.total_output_tokens += data.get("output_tokens", 0)
+        self.total_cost_usd += data.get("cost_usd", 0.0)
+
+    @property
+    def total_tokens(self) -> int:
+        return self.total_input_tokens + self.total_output_tokens
+
+    def to_dict(self) -> dict:
+        return {
+            "input_tokens": self.total_input_tokens,
+            "output_tokens": self.total_output_tokens,
+            "total_tokens": self.total_tokens,
+            "cost_usd": round(self.total_cost_usd, 4),
+        }
+
+
+def _call_claude(prompt: str) -> tuple[str, ClaudeUsage]:
     result = subprocess.run(
-        ["claude", "-p", "--output-format", "text", prompt],
+        ["claude", "-p", "--output-format", "json", prompt],
         capture_output=True,
         text=True,
         timeout=120,
     )
     if result.returncode != 0:
         raise RuntimeError(f"Claude call failed: {result.stderr}")
-    return result.stdout.strip()
+    data = json.loads(result.stdout)
+    usage = ClaudeUsage.from_json(data)
+    text = data.get("result", "").strip()
+    return text, usage
 
 
 def name_workspace(user_description: str) -> str:
@@ -34,7 +89,8 @@ Generate a concise role title (2-4 words) that captures this. Examples:
 
 Respond with ONLY the title, nothing else."""
 
-    return _call_claude(prompt)
+    text, _ = _call_claude(prompt)
+    return text
 
 
 def _format_chat_history(history: list[dict]) -> str:
@@ -100,7 +156,8 @@ def chat_with_claude(
     """Chat with Claude about the current problem. Uses session-style prompting:
     rules are set in the first message, history carries them forward."""
     prompt = _build_chat_prompt(message, question, user_code, is_markdown, chat_history or [])
-    return _call_claude(prompt)
+    text, _ = _call_claude(prompt)
+    return text
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -112,11 +169,15 @@ def _extract_json(text: str) -> dict[str, Any]:
     return result
 
 
+ProgressCallback = Any  # Callable[[str, dict], None] | None
+
+
 def generate_next_problem(
     role: str,
     description: str,
     history_summary: str,
     user_prompt: str = "",
+    on_progress: ProgressCallback = None,
 ) -> GeneratedContent:
     """Single Claude call that picks difficulty, format, category, and generates the problem."""
     prompt = f"""You are an autocurricula engine: an adaptive system that generates \
@@ -180,12 +241,20 @@ For python problems:
         prompt += f'\n\nThe student specifically requested: "{user_prompt}". \
 Incorporate this into your problem choice while still following all the rules above.'
 
-    raw = _call_claude(prompt)
+    if on_progress:
+        on_progress("generating", {})
+    raw, usage = _call_claude(prompt)
+    if on_progress:
+        on_progress("generated", usage.to_dict())
     data = _extract_json(raw)
     return GeneratedContent(**data)
 
 
-def fix_problem(generated: GeneratedProblem, test_output: str) -> GeneratedProblem:
+def fix_problem(
+    generated: GeneratedProblem,
+    test_output: str,
+    on_progress: ProgressCallback = None,
+) -> GeneratedProblem:
     """Ask Claude to fix a generated problem whose reference solution fails its own tests."""
     prompt = f"""You generated an interview practice problem, but the reference solution fails the tests. Fix the issue.
 
@@ -204,7 +273,11 @@ Respond ONLY with a corrected JSON block (wrapped in ```json``` markers) contain
 
 Make sure the reference_solution actually passes all tests."""
 
-    raw = _call_claude(prompt)
+    if on_progress:
+        on_progress("fixing", {})
+    raw, usage = _call_claude(prompt)
+    if on_progress:
+        on_progress("fixed", usage.to_dict())
     data = _extract_json(raw)
     return GeneratedProblem(**data)
 
@@ -269,7 +342,7 @@ that already demonstrate strong understanding can go straight to "solved".
   - If solved with struggle: suggest same level
   - If move_on: suggest easier"""
 
-    raw = _call_claude(prompt)
+    raw, _ = _call_claude(prompt)
     data = _extract_json(raw)
     return SubmissionVerdict(**data)
 
@@ -310,7 +383,7 @@ Respond ONLY with a JSON block (wrapped in ```json``` markers) with these exact 
 
 Make the difficulty EASY relative to the original problem."""
 
-    raw = _call_claude(prompt)
+    raw, _ = _call_claude(prompt)
     data = _extract_json(raw)
     return GeneratedProblem(**data)
 
@@ -368,7 +441,7 @@ Respond ONLY with a JSON block (wrapped in ```json``` markers) with these exact 
 
 - "next_difficulty": suggestion for next problem difficulty ("easy", "medium", "hard", or null if "retry")"""
 
-    raw = _call_claude(prompt)
+    raw, _ = _call_claude(prompt)
     data = _extract_json(raw)
     return SubmissionVerdict(**data)
 
@@ -405,6 +478,6 @@ Respond ONLY with a JSON block (wrapped in ```json``` markers) with these exact 
 
 Make the difficulty EASY relative to the original problem."""
 
-    raw = _call_claude(prompt)
+    raw, _ = _call_claude(prompt)
     data = _extract_json(raw)
     return GeneratedDerivation(**data)

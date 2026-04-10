@@ -1321,6 +1321,13 @@ html, body {
     letter-spacing: -.005em;
 }
 
+#loading-tokens {
+    font-size: 11px;
+    color: var(--t4);
+    margin: -12px 0 0;
+    font-variant-numeric: tabular-nums;
+}
+
 #loading-cancel {
     margin-top: 4px;
     font-size: 12px;

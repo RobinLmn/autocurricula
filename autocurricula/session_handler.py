@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .commands import CommandsMixin
+from .engine import GenerationProgress
 from .handlers import HandlersMixin
 from .models import ProblemMeta, ProblemStatus
 from .progress import load_progress
@@ -211,6 +212,38 @@ class SessionHandler(HandlersMixin, CommandsMixin):
             return
         self._pool_task = asyncio.create_task(self._pool_generate())
 
+    def _make_progress_callback(self, loop: asyncio.AbstractEventLoop) -> tuple:
+        """Create a progress callback and tracker for use from sync threads."""
+        progress = GenerationProgress()
+
+        def _label(step: str, data: dict) -> str:
+            if step == "generating":
+                return "Generating problem..."
+            if step == "generated":
+                return "Validating solution..."
+            if step == "validating":
+                attempt = data.get("attempt", 1)
+                if attempt > 1:
+                    return f"Validating solution (attempt {attempt})..."
+                return "Validating solution..."
+            if step == "fixing":
+                return "Fixing problem..."
+            if step == "fixed":
+                return "Validating solution..."
+            return step
+
+        def on_progress(step: str, data: dict) -> None:
+            if step in ("generated", "fixed"):
+                progress.add_usage(data)
+            msg = {
+                "type": "generating_progress",
+                "step": _label(step, data),
+                **progress.to_dict(),
+            }
+            asyncio.run_coroutine_threadsafe(self.send(msg), loop)
+
+        return on_progress, progress
+
     async def _pool_generate(self) -> None:
         if self.session is None:
             return
@@ -270,9 +303,12 @@ class SessionHandler(HandlersMixin, CommandsMixin):
 
         await self.send({"type": "generating"})
         await self.send({"type": "clear_log"})
-        await self.send_log('<span class="dim">Generating and validating problem...</span>')
+        loop = asyncio.get_event_loop()
+        on_progress, progress = self._make_progress_callback(loop)
         try:
-            next_meta, next_problem_dir = await asyncio.to_thread(self.session.start_problem, user_prompt=prompt)
+            next_meta, next_problem_dir = await asyncio.to_thread(
+                self.session.start_problem, user_prompt=prompt, on_progress=on_progress
+            )
             if self._generate_cancelled:
                 if self.session is not None:
                     self.session.delete_problem(next_meta.id)
