@@ -84,7 +84,6 @@ export function updateLoadingProgress(step, data) {
     _hasTokens = true;
     const elapsed = Math.floor((Date.now() - _timerStart) / 1000);
     const parts = [`${formatTokens(data.total_tokens)} tokens`];
-    if (data.cost_usd > 0) parts.push(`$${data.cost_usd.toFixed(3)}`);
     if (elapsed >= 1) parts.push(`${elapsed}s`);
     $('#loading-tokens').textContent = parts.join(' \u00b7 ');
     $('#loading-tokens').classList.remove('hidden');

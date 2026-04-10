@@ -61,9 +61,7 @@ export function renderUsage24h(usage) {
     el.classList.add('hidden');
     return;
   }
-  const parts = [`${formatTokens(usage.total_tokens)} tokens`];
-  if (usage.cost_usd > 0) parts.push(`$${usage.cost_usd.toFixed(2)}`);
-  el.textContent = `Last 24h: ${parts.join(' · ')}`;
+  el.textContent = `Last 24h: ${formatTokens(usage.total_tokens)} tokens`;
   el.classList.remove('hidden');
 }
 
