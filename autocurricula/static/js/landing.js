@@ -61,7 +61,7 @@ export function renderUsage24h(usage) {
     el.classList.add('hidden');
     return;
   }
-  el.textContent = `Last 24h: ${formatTokens(usage.total_tokens)} tokens`;
+  el.textContent = `${formatTokens(usage.total_tokens)} tokens in the last 24h`;
   el.classList.remove('hidden');
 }
 
