@@ -18,6 +18,7 @@ class _HandlersProto(Protocol):
     _confirm_future: asyncio.Future[bool] | None
     _chat_busy: bool
     _chat_queue: list[dict]
+    _generate_cancelled: bool
 
     async def send(self, msg: dict) -> None: ...
     async def send_log(self, html: str, style: str = ...) -> None: ...
@@ -25,7 +26,7 @@ class _HandlersProto(Protocol):
     def _problem_payload(self, meta: ProblemMeta, d: Path) -> dict: ...
     async def _send_app_state(self) -> None: ...
     async def _send_landing(self) -> None: ...
-    async def _generate_next(self) -> None: ...
+    async def _generate_next(self, prompt: str = "") -> None: ...
     async def _process_chat_queue(self) -> None: ...
     async def _cmd_run(self) -> None: ...
     async def _cmd_test(self) -> None: ...
@@ -45,6 +46,16 @@ class HandlersMixin:
     session: Session | None
     current_problem: ProblemMeta | None
     current_problem_dir: Path | None
+    _generate_task: asyncio.Task | None
+
+    def _spawn_generate(self: _HandlersProto, prompt: str = "") -> None:  # type: ignore[misc]
+        async def _run():
+            await self.set_busy(True)
+            try:
+                await self._generate_next(prompt=prompt)
+            finally:
+                await self.set_busy(False)
+        self._generate_task = asyncio.create_task(_run())
 
     async def _handle_select_workspace(self: _HandlersProto, data: dict) -> None:  # type: ignore[misc]
         slug = data.get("slug", "").strip()
@@ -66,10 +77,21 @@ class HandlersMixin:
         CONFIG_FILE.write_text(slug)
         session = Session(role, ws_dir)
         self.session = session
-        await self._send_app_state()
-        current = session.get_current()
-        if current is None or current.status != ProblemStatus.IN_PROGRESS:
-            await self._generate_next()
+        new_problem = data.get("new_problem", False)
+        prompt = data.get("prompt", "").strip() if new_problem else ""
+        if new_problem:
+            # Send app state without loading existing problem
+            await self.send({
+                "type": "state",
+                "needs_onboarding": False,
+                "role": session.role,
+            })
+            self._spawn_generate(prompt=prompt)
+        else:
+            await self._send_app_state()
+            current = session.get_current()
+            if current is None or current.status != ProblemStatus.IN_PROGRESS:
+                self._spawn_generate()
 
     async def _handle_load_problem(self: _HandlersProto, data: dict) -> None:  # type: ignore[misc]
         slug = data.get("slug", "").strip()
@@ -144,7 +166,7 @@ class HandlersMixin:
             _, workspace_dir = await asyncio.to_thread(create_workspace, role, user_input)
             self.session = Session(role, workspace_dir)
             await self._send_app_state()
-            await self._generate_next()
+            self._spawn_generate()
         except Exception as e:
             await self.set_busy(False)
             await self.send({"type": "error", "message": str(e)})
@@ -161,7 +183,7 @@ class HandlersMixin:
             self.session = Session(role, workspace_dir)
             await self.send({"type": "onboarded", "role": role})
             await self.send_log(f'<span class="c-success">Workspace: <span class="bold">{role}</span></span>')
-            await self._generate_next()
+            self._spawn_generate()
         except Exception as e:
             await self.set_busy(False)
             await self.send_log(f'<span class="c-error">Error: {e}</span>')
@@ -178,7 +200,7 @@ class HandlersMixin:
                     payload = self._problem_payload(parent, parent_dir)
                     await self.send({"type": "problem_loaded", "problem": payload})
                     return
-        await self._generate_next()
+        self._spawn_generate()
 
     async def _handle_rate_problem(self: _HandlersProto, data: dict) -> None:  # type: ignore[misc]
         problem_id = data.get("problem_id")
@@ -193,6 +215,20 @@ class HandlersMixin:
         self.session = None
         self.current_problem = None
         self.current_problem_dir = None
+        await self._send_landing()
+
+    async def _handle_cancel_generate(self: _HandlersProto, data: dict) -> None:  # type: ignore[misc]
+        self._generate_cancelled = True
+        if self._generate_task and not self._generate_task.done():
+            self._generate_task.cancel()
+            try:
+                await self._generate_task
+            except asyncio.CancelledError:
+                pass
+        self.session = None
+        self.current_problem = None
+        self.current_problem_dir = None
+        await self.set_busy(False)
         await self._send_landing()
 
     async def _handle_chat(self: _HandlersProto, data: dict) -> None:  # type: ignore[misc]

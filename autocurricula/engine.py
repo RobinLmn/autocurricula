@@ -116,6 +116,7 @@ def generate_next_problem(
     role: str,
     description: str,
     history_summary: str,
+    user_prompt: str = "",
 ) -> GeneratedContent:
     """Single Claude call that picks difficulty, format, category, and generates the problem."""
     prompt = f"""You are an autocurricula engine: an adaptive system that generates \
@@ -130,22 +131,33 @@ Progress so far:
 {history_summary}
 
 Based on this history, decide what the student should practice next. Consider:
+- **Breadth first**: prioritize tags and topics the student hasn't covered yet. \
+For coding, rotate across data structures (array, string, tree, graph, linked-list, stack, queue, heap) \
+and techniques (dynamic-programming, greedy, sliding-window, two-pointers, bfs, dfs, binary-search, backtracking, sorting). \
+Check the "Tags covered so far" section and pick under-represented tags.
 - Which categories they've under-practiced or struggled with
 - Whether to escalate, maintain, or reduce difficulty
 - Whether a coding problem ("python") or written-answer problem ("markdown") fits best
-- Avoid repeating recent categories unless the student needs more practice there
+- Avoid repeating recent categories or tags unless the student needs more practice there
 
 Respond ONLY with a JSON block (wrapped in ```json``` markers) with these keys:
 
 - "title": short descriptive title (string)
 - "category": lowercase category label, e.g. "algorithms", "probability", "ml", "system design" (string)
+- "tags": 2-4 specific topic tags describing the core techniques and data structures involved, \
+e.g. ["array", "sliding-window"], ["tree", "bfs"], ["dynamic-programming", "memoization"], \
+["string", "two-pointers"], ["graph", "shortest-path"], ["probability", "bayes-theorem"]. \
+Use consistent lowercase kebab-case names. (list of strings)
 - "difficulty": "easy", "medium", or "hard" (string)
 - "format": "python" or "markdown" (string)
 - "question": full problem statement in markdown. Write it like a real interview question. \
 For python: state WHAT to implement, specify inputs/outputs and types, give 1-2 examples. \
 For markdown: be specific about what to address, use LaTeX ($...$) for math. \
 Do NOT include implementation hints. (string)
-- "theory": background theory in markdown covering concepts needed. \
+- "theory": background theory in markdown covering the underlying concepts and data structures, \
+NOT applied to this specific problem. For example, for a graph traversal problem, explain what DFS/BFS are \
+and how they work in general — do NOT explain how to use them to solve this particular problem. \
+The student should read the theory to learn the building blocks, then figure out how to apply them. \
 This IS the place for formulas, derivations, and intuitions. 2-4 paragraphs. (string)
 - "solution_template": for python: function signature `def solve(...)` with full type hints and `pass`. \
 For markdown: section headings that guide the response. (string)
@@ -159,7 +171,13 @@ For python format ONLY, also include:
 For python problems:
 - numpy, torch, scipy, pandas are available but only use them when natural for the problem
 - Use 2-space indentation in all Python code
+- If the problem uses custom classes (e.g. TreeNode, ListNode), always include `__repr__` so test output is readable
+- Tests should compare primitive values (ints, strings, lists) whenever possible, not object references
 - Make sure tests are self-contained and correct"""
+
+    if user_prompt:
+        prompt += f"\n\nThe student specifically requested: \"{user_prompt}\". \
+Incorporate this into your problem choice while still following all the rules above."
 
     raw = _call_claude(prompt)
     data = _extract_json(raw)
@@ -201,43 +219,51 @@ def review_submission(
     chat_history: list[dict] | None = None,
 ) -> SubmissionVerdict:
     history_text = _format_chat_history(chat_history or [])
-    history_section = f"\n\nChat discussion with student:\n{history_text}" if history_text else ""
+    history_section = f"\n\nYour conversation with the student so far:\n{history_text}" if history_text else ""
 
-    prompt = f"""You are reviewing a student's submission for an interview practice problem.
+    prompt = f"""You are a tutor helping a student practice for technical interviews. \
+The student just submitted their solution. Review it and respond directly to them \
+(use "you", not "the student").{history_section}
 
 Problem:
 {question}
 
-Student's solution:
+Their solution:
 ```python
 {user_code}
 ```
 
 Test results (all tests passed: {all_tests_passed}):
-{test_output}{history_section}
+{test_output}
 
 Context:
 - Role: {role}
 - Difficulty: {difficulty}
 - Attempts: {attempts}
 
-Review the submission and decide what happens next. Respond ONLY with a JSON block
+Decide what happens next. Respond ONLY with a JSON block
 (wrapped in ```json``` markers) with these exact keys:
 
-- "decision": one of "solved", "retry", or "move_on"
-  - "solved": the solution is correct and passes all tests. Congratulate the student.
+- "decision": one of "solved", "follow_up", "retry", or "move_on"
+  - "solved": the solution is correct, all tests pass, and you have no follow-up questions.
+  - "follow_up": all tests pass and the solution works, but you want to ask a follow-up question \
+before marking it as solved — just like a real interviewer would. Use this to ask about time/space \
+complexity, potential optimizations, edge cases, alternative approaches, or trade-offs. \
+Use your judgement: not every correct solution needs a follow-up. Simple/easy problems or solutions \
+that already demonstrate strong understanding can go straight to "solved".
   - "retry": tests failed or the solution has issues worth fixing. Encourage them to try again.
   - "move_on": the student has been struggling too long (many attempts) and should move to a
     different problem. Mark as unsolved.
 
-- "feedback": detailed feedback string. Include:
+- "feedback": detailed feedback string addressing the student directly. Include:
   - Whether the solution is correct
   - Code quality observations (performance, readability, edge cases)
-  - For "solved": what they did well, any optimization opportunities
+  - For "solved": what they did well
+  - For "follow_up": acknowledge the solution works, then ask your follow-up question
   - For "retry": what's wrong and a nudge toward fixing it (without giving the answer)
   - For "move_on": key takeaways from this problem, what to study
 
-- "next_difficulty": suggestion for next problem difficulty ("easy", "medium", "hard", or null if "retry")
+- "next_difficulty": suggestion for next problem difficulty ("easy", "medium", "hard", or null if "retry"/"follow_up")
   - If solved easily (few attempts): suggest harder
   - If solved with struggle: suggest same level
   - If move_on: suggest easier"""
@@ -298,25 +324,27 @@ def review_derivation(
     chat_history: list[dict] | None = None,
 ) -> SubmissionVerdict:
     history_text = _format_chat_history(chat_history or [])
-    history_section = f"\n\nChat discussion with student:\n{history_text}" if history_text else ""
+    history_section = f"\n\nYour conversation with the student so far:\n{history_text}" if history_text else ""
 
-    prompt = f"""You are reviewing a student's written answer for an interview practice problem.
+    prompt = f"""You are a tutor helping a student practice for technical interviews. \
+The student just submitted their written answer. Review it and respond directly to them \
+(use "you", not "the student").{history_section}
 
 Problem:
 {question}
 
-Student's answer (in markdown):
+Their answer (in markdown):
 {user_answer}
 
 Reference solution:
-{reference_solution}{history_section}
+{reference_solution}
 
 Context:
 - Role: {role}
 - Difficulty: {difficulty}
 - Attempts: {attempts}
 
-Review the answer and decide what happens next. The student does NOT need to match the
+Review the answer and decide what happens next. They do NOT need to match the
 reference solution exactly -- they can use different valid approaches or framings. Judge
 correctness, completeness, and quality of reasoning.
 
@@ -331,7 +359,7 @@ Respond ONLY with a JSON block (wrapped in ```json``` markers) with these exact 
   - "retry": there are significant errors or missing elements worth addressing
   - "move_on": the student has been struggling too long
 
-- "feedback": detailed feedback string. Include:
+- "feedback": detailed feedback string addressing the student directly. Include:
   - Whether the answer is correct/complete
   - What's strong and what's missing or wrong
   - For "retry": specific guidance toward improving (without giving the full answer)

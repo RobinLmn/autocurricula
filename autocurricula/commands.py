@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from .models import ProblemMeta, ProblemStatus, SubmissionVerdict
-from .test_parsing import extract_failure_details, parse_pytest_output
+from .test_parsing import extract_failure_details, extract_test_assertions, parse_pytest_output
 
 if TYPE_CHECKING:
     from .session import Session
@@ -21,6 +21,7 @@ class _CommandsProto(Protocol):
     current_problem_dir: Path | None
     _cmd_lock: asyncio.Lock
     _confirm_future: asyncio.Future[bool] | None
+    _pooled_problem: tuple[ProblemMeta, Path] | None
     ws: _WsProto
 
     async def send(self, msg: dict) -> None: ...
@@ -79,10 +80,16 @@ class CommandsMixin:
                     await self.send_log('<span class="c-error">no active problem</span>')
                     return
                 tests = parse_pytest_output(result.output)
+                if not tests and not result.passed:
+                    tests = [{"name": "collection", "status": "error", "detail": result.output.strip()}]
+                    result.num_failed = 1
                 details = extract_failure_details(result.output) if not result.passed else {}
+                assertions = extract_test_assertions(self.current_problem_dir / "tests_open.py") if self.current_problem_dir else {}
                 for t in tests:
                     if t["status"] == "failed" and t["name"] in details:
                         t["detail"] = details[t["name"]]
+                    elif t["status"] == "passed" and t["name"] in assertions:
+                        t["detail"] = assertions[t["name"]]
                 await self.send(
                     {
                         "type": "test_results",
@@ -116,14 +123,26 @@ class CommandsMixin:
                     return
                 open_tests = parse_pytest_output(open_result.output)
                 hidden_tests = parse_pytest_output(hidden_result.output)
+                if not open_tests and not open_result.passed:
+                    open_tests = [{"name": "collection", "status": "error", "detail": open_result.output.strip()}]
+                    open_result.num_failed = 1
+                if not hidden_tests and not hidden_result.passed:
+                    hidden_tests = [{"name": "collection", "status": "error", "detail": hidden_result.output.strip()}]
+                    hidden_result.num_failed = 1
                 open_details = extract_failure_details(open_result.output) if not open_result.passed else {}
                 hidden_details = extract_failure_details(hidden_result.output) if not hidden_result.passed else {}
+                open_assertions = extract_test_assertions(self.current_problem_dir / "tests_open.py") if self.current_problem_dir else {}
+                hidden_assertions = extract_test_assertions(self.current_problem_dir / "tests_hidden.py") if self.current_problem_dir else {}
                 for t in open_tests:
                     if t["status"] == "failed" and t["name"] in open_details:
                         t["detail"] = open_details[t["name"]]
+                    elif t["status"] == "passed" and t["name"] in open_assertions:
+                        t["detail"] = open_assertions[t["name"]]
                 for t in hidden_tests:
                     if t["status"] == "failed" and t["name"] in hidden_details:
                         t["detail"] = hidden_details[t["name"]]
+                    elif t["status"] == "passed" and t["name"] in hidden_assertions:
+                        t["detail"] = hidden_assertions[t["name"]]
                 await self.send(
                     {
                         "type": "test_results",
@@ -168,7 +187,7 @@ class CommandsMixin:
             problem = self.session.get_current()
             if problem and problem.parent_problem:
                 has_parent = True
-        label = {"solved": "Solved!", "retry": "Not quite", "move_on": "Moving on"}.get(verdict.decision, "Review")
+        label = {"solved": "Solved!", "follow_up": "Follow-up", "retry": "Not quite", "move_on": "Moving on"}.get(verdict.decision, "Review")
         self.session.append_chat(meta.id, "assistant", f"**{label}**\n\n{verdict.feedback}")
         await self.send(
             {
@@ -199,9 +218,9 @@ class CommandsMixin:
                     await self.send({"type": "problem_loaded", "problem": payload})
                     await self.send({"type": "clear_log"})
                 else:
-                    await self.send_log('<span class="c-error">Could not generate scaffold</span>')
+                    await self.send({"type": "chat_response", "text": "Sorry, I couldn't generate a scaffold for this problem. Try again or ask me for a hint instead."})
             except Exception as e:
-                await self.send_log(f'<span class="c-error">error: {e}</span>')
+                await self.send({"type": "chat_response", "text": "Sorry, something went wrong while generating the scaffold. Try again or ask me for a hint instead."})
             finally:
                 await self.set_busy(False)
 
@@ -226,18 +245,23 @@ class CommandsMixin:
         finally:
             self._confirm_future = None
         if confirmed:
-            meta = self.session.give_up()
-            if meta is None:
-                return
-            await self.send_log(f'<span class="dim">Skipped: {meta.title}</span>')
-            current = self.session.get_current()
-            if current and current.id != meta.id and current.status == ProblemStatus.IN_PROGRESS:
-                self.current_problem = current
-                self.current_problem_dir = self.session._problem_dir(current.id)
-                payload = self._problem_payload(current, self.current_problem_dir)
-                await self.send({"type": "problem_loaded", "problem": payload})
-            else:
-                await self._generate_next()
+            await self.set_busy(True)
+            try:
+                meta = self.session.give_up()
+                if meta is None:
+                    return
+                await self.send_log(f'<span class="dim">Skipped: {meta.title}</span>')
+                current = self.session.get_current()
+                if current and current.id != meta.id and current.status == ProblemStatus.IN_PROGRESS:
+                    self.current_problem = current
+                    self.current_problem_dir = self.session._problem_dir(current.id)
+                    payload = self._problem_payload(current, self.current_problem_dir)
+                    await self.send({"type": "problem_loaded", "problem": payload})
+                else:
+                    self._pooled_problem = None
+                    await self._generate_next()
+            finally:
+                await self.set_busy(False)
 
     async def _cmd_show(self: _CommandsProto) -> None:  # type: ignore[misc]
         if self.current_problem and self.current_problem_dir:

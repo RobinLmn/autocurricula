@@ -22,7 +22,11 @@ function handleInput(val) {
     const parts = line.slice(1).split(/\s+/);
     send({ type: 'command', name: parts[0], args: parts.slice(1), code });
   } else {
-    appendChat('user', line);
+    if (state.chatBusy) {
+      appendChat('user', line, false, true);
+    } else {
+      appendChat('user', line);
+    }
     send({ type: 'chat', message: line, code });
   }
 }
@@ -69,6 +73,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Home button
   $('#btn-home').addEventListener('click', () => send({ type: 'go_home' }));
+
+  // Cancel generation
+  $('#loading-cancel').addEventListener('click', () => send({ type: 'cancel_generate' }));
 
   // Pomodoro
   $('#btn-pomodoro').addEventListener('click', () => {

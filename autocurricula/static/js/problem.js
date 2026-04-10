@@ -93,11 +93,12 @@ export function appendOutput(content, isHtml, isError) {
   panel.scrollTop = panel.scrollHeight;
 }
 
-export function appendChat(role, content, isHtml) {
+export function appendChat(role, content, isHtml, queued) {
   const panel = $('#chat-scroll');
   const el = document.createElement('div');
   if (role === 'user') {
     el.className = 'chat-msg user-msg';
+    if (queued) el.classList.add('queued');
     el.innerHTML = `<span class="msg-label">you</span>${esc(content).replace(/\n/g, '<br>')}`;
   } else {
     el.className = 'chat-msg claude-msg';
@@ -109,8 +110,21 @@ export function appendChat(role, content, isHtml) {
     inner.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
     el.appendChild(inner);
   }
-  panel.insertBefore(el, $('#typing-indicator'));
+  if (queued) {
+    panel.appendChild(el);
+  } else {
+    panel.insertBefore(el, $('#typing-indicator'));
+  }
   requestAnimationFrame(() => requestAnimationFrame(() => { panel.scrollTop = panel.scrollHeight; }));
+}
+
+export function promoteQueuedMessages() {
+  const panel = $('#chat-scroll');
+  const typing = $('#typing-indicator');
+  panel.querySelectorAll('.chat-msg.queued').forEach(el => {
+    el.classList.remove('queued');
+    panel.insertBefore(el, typing);
+  });
 }
 
 export function showRatingPrompt(problemId, nextDifficulty, hasParent) {
@@ -197,6 +211,13 @@ export function renderInitialTests(openNames, hiddenCount) {
   }
 }
 
+function formatDetail(detail) {
+  return esc(detail).replace(
+    /^(Expected|Got|Assertion failed)(:.*)$/gm,
+    (_, label, rest) => `<span class="detail-label detail-${label.toLowerCase().replace(' ', '-')}">${label}</span>${rest}`
+  );
+}
+
 export function renderTestResults(msg) {
   const container = $('#tests-scroll');
   container.innerHTML = '';
@@ -233,13 +254,14 @@ export function renderTestResults(msg) {
       row.innerHTML = `
         <div class="test-icon ${iconClass}">${icon}</div>
         <div class="test-info">
-          <div class="test-name">${isFailed && t.detail ? chevron : ''}${esc(t.name)}</div>
-          ${t.detail ? `<div class="test-detail collapsed">${esc(t.detail)}</div>` : ''}
+          <div class="test-name">${t.detail ? chevron : ''}${esc(t.name)}</div>
+          ${t.detail ? `<div class="test-detail${isFailed ? '' : ' collapsed'}">${formatDetail(t.detail)}</div>` : ''}
         </div>
       `;
 
-      if (isFailed && t.detail) {
+      if (t.detail) {
         row.classList.add('expandable');
+        if (isFailed) row.classList.add('expanded');
         row.addEventListener('click', () => {
           row.classList.toggle('expanded');
           const detail = row.querySelector('.test-detail');

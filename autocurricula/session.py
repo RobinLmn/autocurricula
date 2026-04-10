@@ -160,6 +160,7 @@ class Session:
     def start_problem(
         self,
         set_current: bool = True,
+        user_prompt: str = "",
     ) -> tuple[ProblemMeta, Path]:
         state = self._load_state()
         state.current_role = self.role
@@ -168,7 +169,7 @@ class Session:
         summary = history_summary(state, self.role)
         description = get_description(self.workspace_dir) or self.role
 
-        generated = generate_next_problem(self.role, description, summary)
+        generated = generate_next_problem(self.role, description, summary, user_prompt=user_prompt)
 
         if generated.difficulty in ("easy", "medium", "hard"):
             difficulty = Difficulty(generated.difficulty)
@@ -183,6 +184,7 @@ class Session:
             category=generated.category,
             difficulty=difficulty,
             format=fmt,
+            tags=generated.tags,
         )
 
         if fmt == "markdown":
@@ -403,6 +405,19 @@ class Session:
 
         self._save_state(state)
         return problem
+
+    def delete_problem(self, problem_id: str) -> None:
+        """Remove a problem entirely (files and state)."""
+        import shutil
+
+        d = self._problem_dir(problem_id)
+        if d.exists():
+            shutil.rmtree(d)
+        state = self._load_state()
+        state.problems.pop(problem_id, None)
+        if state.current_problem_id == problem_id:
+            state.current_problem_id = None
+        self._save_state(state)
 
     def rate_problem(self, problem_id: str, rating: int) -> ProblemMeta | None:
         """Record the user's difficulty rating (1-5) for a problem."""
